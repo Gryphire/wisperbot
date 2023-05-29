@@ -1,35 +1,59 @@
-
-### SETTING WISPERBOT'S BEHAVIOURS
-
+#!/usr/bin/python
 ## LIBRARIES
-from typing import Final        #Enables us to indicate that a variable should NOT be reassigned or overridden
-from telegram import Update     #Enables us to push an update to the Telegram API, e.g., sending a message, etc.
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import datetime
+import glob
+import logging
+import os
+import time
+import subprocess
+import sys
+from operator import itemgetter
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
+from telegram.ext import (filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes, CallbackContext)
 
-## SETUP VARS
-TOKEN: Final ='6229904915:AAFD6r03dFf61YkCDVRJxnt7sSKSqKWSABA'
-BOT_USERNAME: Final = '@wisper_social_bot'
+## TOKEN SETUP
+TOKEN = '#insert token here'
+
+## LOGGER SETUP
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO)
+# Save logger to object that we can call in future to save events to
+logger = logging.getLogger()
+
+# BOT'S PROMPT CHOICE SYSTEM
+# Determine what question is asked
+prompt_reply_keyboard = [
+    ["Value Tensions", "Authentic Relating"],
+]
+# Format the 'keyboard' (which is actually the multiple choice field)
+markup = ReplyKeyboardMarkup(prompt_reply_keyboard, one_time_keyboard=True)
 
 ## COMMANDS
-# BOT's START-BEHAVIOUR
+# BOT'S RESPONSE TO /START
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await update.message.reply_text("Welcome! I'm looking forward to helping you connect and reflect with others!")
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nUse the /latest command to receive the latest voicenote, or send me (and anyone else in this group) a voice note of your own.\n\nFor more information about the aim of WisperBot, please use the /help command."
+    )
+    logger.info(f"Sent instructions to {update.message.from_user.first_name}")
 
-# BOT's HELP-BEHAVIOUR
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # When the user types /help in the conversation with the bot, then...
+# BOT's RESPONSE TO /PROMPT
+async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # When the user uses the /prompt commant, then...
     # the bot will reply with the following reply text
-    await update.message.reply_text("I'm happy to help! Just record a voice message resonding to the prompt and hit enter to send it to your chat partners!")
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"Yay! Happy to hear you'd like to receive a prompt to get going, {update.message.from_user.first_name}!\n\nWhat sort of prompt would you like to receive? Something about...",
+        reply_markup = markup
+    )
+    logger.info(f"Sent prompt to {update.message.from_user.first_name}")
 
-# BOT's CUSTOM COMMAND BEHAVIOUR
-#async def custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#    # When the user types /custom in the conversation with the bot, then...
-#    # the bot will reply with the following reply text
-#    await update.message.reply_text("Ohh, you're trying a custom command! Exciting!")
 
-## CREATE RESPONSE TO USER MESSAGE
+## MESSAGES
+# COMPILING RESPONSE TO USER MESSAGE
 ## Note: this function only will determine WHAT to send back, if will not send anything back YET
 def create_response(usertext: str) -> str:
     # Python is difficult about case, so we want to make sure it's all equalized to lowercase 
@@ -37,70 +61,140 @@ def create_response(usertext: str) -> str:
     processed_usertext: str = usertext.lower()
 
     # Check if user is greeting the bot, if so respond with a greeting too
-    if 'hello' in processed_usertext or 'hi' in processed_usertext:
-        return: "Hi there!"
+    if 'hello' in processed_usertext or 'hi' in processed_usertext or 'hey' in processed_usertext:
+        return f"Hi there! Welcome to WisperBot. Please use the /start command to get started!"
 
     # Check if user is asking how the bot is doing
     if 'how are you?' in processed_usertext:
-        return: "I'm doing good, to the extent that that's possible for a bot! Hope you're having a lovely day too!"
+        return f"I'm doing good, to the extent that that's possible for a bot! Hope you're having a lovely day too!"
+
+    # Check if user is thanking WisperBot
+    if 'thanks' in processed_usertext or 'thank you' in processed_usertext:
+        return f"You're very welcome! Remember, if you get stuck, you can always get back on track with /start or /help."
+
+    # PROMPT RESPONSES
+    # Value tensions
+    if 'value tensions' in processed_usertext:
+        return f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD How do you balance taking care of others and taking care of yourself?\n\nHave fun chatting!"
+
+    # Authentic relating
+    if 'authentic relating' in processed_usertext:
+        return f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
 
     # If none of these are detected (i.e., the user is saying something else), respond with...
-    return: "Sadly I'm unable to understand what you're telling me. Maybe in a next upgrade!"
+    else: 
+        return f"Sadly I'm unable to understand what you're telling me. Maybe in a next upgrade!"
 
-## SENDING BOT'S RESPONSE THROUGH MESSAGE
-async def handle_message(update: Update, context: ContextType.DEFAULT_TYPE):
+# HANDLING MESSAGE RESPONSE
+async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''Given a message, echo it back with their name'''
     # First we need to determine the chat type: solo with bot, or group chat with bot?
     # This is important because in a group chat, people may not be talking to the bot, and we want to 
     # ensure that the bot only responds when spoken to.
     chat_type: str = update.message.chat.type
     usertext: str = update.message.text
+    processed_usertext: str = usertext.lower()
 
-    # Add some debugging log to console so we can see what's happening
-    print(f'User ({update.message.chat.id}) in {chat_type}: "{usertext}"')
-
-    # Response handling in case it's a group chat
-    if chat_type = 'group':
-        # Check if the bot is being addressed by the user
-        if BOT_USERNAME in usertext:
-            # Filter out the bot's user name out of the user's message and strip from leading or trailing white spaces,
-            # so we can process the user's message correctly
-            clean_usertext: str = usertext.replace(BOT_USERNAME, '').strip
-            response: str = create_response(clean_usertext)
-        else: 
-            # If bot's name is not mentioned in user's message, do nothing
+    if chat_type == 'group':
+        # Make sure to only respond when reference is made to WisperBot
+        if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
+            # Only respond if Wisperbot's name is called in user's message
+            await context.bot.send_message(
+                chat_id = update.effective_chat.id,
+                text = create_response(usertext),
+            )
+            logger.info(f"Sent instructions to {update.message.from_user.first_name}")
+        else:
             return
-    # Response handling in case it's a solo chat
     else:
-        # No cleaning/filtering necessary, we can just respond to the user's message as it came in
-        response: str = create_response(usertext)
+        # Respond as usual without checking if WisperBot's name is called
+        await context.bot.send_message(
+                chat_id = update.effective_chat.id,
+                text = create_response(usertext),
+            )
+        logger.info(f"Sent instructions to {update.message.from_user.first_name}")
 
-    print('Bot: ', response)
 
-    # ACTUALLY send the response to the chat
-    await update.message.reply_text(response)
+async def get_voice(update: Update, context: CallbackContext) -> None:
+    '''Save any voicenotes sent to the bot, and send back the last 5'''
+    vn = get_last_vn() # Save the filename of the last voicenote before saving the new one
+    # get basic info about the voice note file and prepare it for downloading
+    new_file = await context.bot.get_file(update.message.voice.file_id)
+    # download the voice note as a file
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H:%M")
+    filename = f"{ts}-{update.message.from_user.first_name}-{new_file.file_unique_id}.ogg"
+    await new_file.download_to_drive(filename)
+    logger.info(f"Downloaded voicenote as {filename}")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    time.sleep(2) # stupid but otherwise it looks like it responds before it gets your message
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"Thanks for recording, {update.message.from_user.first_name}!"
+    )
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"Here are the voicenotes preceding the one you just submitted:"
+    )
+    await context.bot.send_voice(
+        chat_id=update.effective_chat.id,
+        voice=vn
+    )
+    concat_voicenotes()
 
-## ERROR HANDLING
-async def error(update: Update, context: ContextType.DEFAULT_TYPE):
-    print(f'The update {update} caused the following error: {context.error}')
+def get_last_vn():
+    '''Get the latest ogg file in the current directory'''
+    ogg_files = glob.glob("*.ogg")
+    file_times = {file:os.path.getmtime(file) for file in ogg_files}
+    file_times = sorted(file_times.items(), key=itemgetter(1), reverse=True)
 
-## PUTTING ALL FUNCTIONS TOGETHER IN AN APP
-if __name__ == '__wisperbotmain__':
-    # Get the app up and running
-    print('Starting WisperBot...')
-    app = Application.builder().token(TOKEN).build()
-    
-    # Connect our commands to the app
-    app.add_handler(CommandHandler('start', start_command))
-    app.add_handler(CommandHandler('help', help_command))
-    #app.add_handler(CommandHandler('custom', custom_command))
+    most_recent_file = file_times[0][0]
 
-    # Connect our message-handling to the app
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    return most_recent_file
 
-    # Connect our error-handling to the app
-    app.add_error_handler(error)
+def concat_voicenotes():
+    '''Make the last 5 voicenotes into the latest voicenote'''
+    ogg_files = glob.glob("20*.ogg")
+    ogg_files.sort(key=os.path.getmtime)
+    latest_5 = ogg_files[-5:]
 
-    # IMPORTANT: Check for new updates coming from the chat
-    # We set it to check for new messages etc. from the chat every 3 seconds
-    print('Waiting for updates...')
-    app.run_polling(poll_interval=3)
+    with open('inputs','w',encoding='utf-8') as f:
+        for filename in latest_5:
+            f.write(f"file 'file:{filename}'\n")
+    subprocess.run([
+        'ffmpeg','-f','concat','-safe','0','-i','inputs','-c','copy','-y','latest.ogg',
+        ], check=False)
+    logger.info(f"Updated latest.ogg")
+
+
+async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    vn = get_last_vn()
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"Hi {update.message.from_user.first_name}! \
+Please listen to this voicenote and respond with your own voicenote."
+    )
+    await context.bot.send_voice(
+        chat_id=update.effective_chat.id,
+        voice=vn
+    )
+    logger.info(f"Sent {vn} to {update.message.from_user.first_name}")
+
+## COMPILE ALL FUNCTIONS INTO APP
+if __name__ == '__main__':
+    # Create application
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    # Connect our text message and audio handlers to the app
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), msg))
+    application.add_handler(MessageHandler(filters.VOICE , get_voice))
+
+    ## Connect our command handlers to the app
+    # /Start command
+    application.add_handler(CommandHandler('start', start_command))
+    # /Latest command
+    application.add_handler(CommandHandler('latest', latest))
+    # /Prompt command
+    application.add_handler(CommandHandler('prompt', prompt_command))
+
+    # Run application and wait for messages to come in
+    application.run_polling()
