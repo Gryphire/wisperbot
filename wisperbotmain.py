@@ -1,20 +1,23 @@
 #!/usr/bin/python
 ## LIBRARIES
-import datetime
+from datetime import datetime
 import glob
 import logging
 import os
 import time
 import subprocess
 import sys
+import re
+import openai
 from operator import itemgetter
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes, CallbackContext)
 
 ## TOKEN SETUP
-TOKEN = '#insert token here'
+TOKEN = 'insert your bot token here'
+openai.api_key = 'insert your openAI api key here
 
-## LOGGER SETUP
+## LOGGER FILE SETUP
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO)
@@ -27,7 +30,7 @@ prompt_reply_keyboard = [
     ["Value Tensions", "Authentic Relating"],
 ]
 # Format the 'keyboard' (which is actually the multiple choice field)
-markup = ReplyKeyboardMarkup(prompt_reply_keyboard, one_time_keyboard=True)
+markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 ## COMMANDS
 # BOT'S RESPONSE TO /START
@@ -36,9 +39,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # the bot will reply with the following reply text
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nUse the /latest command to receive the latest voicenote, or send me (and anyone else in this group) a voice note of your own.\n\nFor more information about the aim of WisperBot, please use the /help command."
+        text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latest command to refresh your memory and send a voicenote of your own.\n\nFor more information about the aim of WisperBot, please use the /help command."
     )
-    logger.info(f"Sent instructions to {update.message.from_user.first_name}")
+    logger.info(f"Sent Start instructions to {update.message.from_user.first_name}")
+
+# BOT'S RESPONSE TO /HELP
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # When the user presses 'start' to start a conversation with the bot, then...
+    # the bot will reply with the following reply text
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions."
+    )
+    logger.info(f"Sent help info to {update.message.from_user.first_name}")
+
 
 # BOT's RESPONSE TO /PROMPT
 async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -49,7 +63,7 @@ async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"Yay! Happy to hear you'd like to receive a prompt to get going, {update.message.from_user.first_name}!\n\nWhat sort of prompt would you like to receive? Something about...",
         reply_markup = markup
     )
-    logger.info(f"Sent prompt to {update.message.from_user.first_name}")
+    logger.info(f"Sent new prompt to {update.message.from_user.first_name}")
 
 
 ## MESSAGES
@@ -62,7 +76,7 @@ def create_response(usertext: str) -> str:
 
     # Check if user is greeting the bot, if so respond with a greeting too
     if 'hello' in processed_usertext or 'hi' in processed_usertext or 'hey' in processed_usertext:
-        return f"Hi there! Welcome to WisperBot. Please use the /start command to get started!"
+        return f"Hi there! Welcome to WisperBot. Please use the /start command to get instructions on how to get started!"
 
     # Check if user is asking how the bot is doing
     if 'how are you?' in processed_usertext:
@@ -82,8 +96,18 @@ def create_response(usertext: str) -> str:
         return f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
 
     # If none of these are detected (i.e., the user is saying something else), respond with...
+    # An integration with OpenAI's DaVinci LLM! Yay! That way the interaction is smoother and the user doesn't keep running into
+    # a wall whenever they say something that our pre-set message detection doesn't recognize.
     else: 
-        return f"Sadly I'm unable to understand what you're telling me. Maybe in a next upgrade!"
+        response = openai.Completion.create(
+            model="text-davinci-003",
+            prompt=processed_usertext,
+            temperature = 0.5,
+            max_tokens=1024,
+            top_p = 1,
+            frequency_penalty=0.0
+        )
+        return response['choices'][0]["text"]
 
 # HANDLING MESSAGE RESPONSE
 async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,7 +127,7 @@ async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id = update.effective_chat.id,
                 text = create_response(usertext),
             )
-            logger.info(f"Sent instructions to {update.message.from_user.first_name}")
+            logger.info(f"Sent response to {update.message.from_user.first_name}")
         else:
             return
     else:
@@ -112,12 +136,18 @@ async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id = update.effective_chat.id,
                 text = create_response(usertext),
             )
-        logger.info(f"Sent instructions to {update.message.from_user.first_name}")
+        logger.info(f"Sent response to {update.message.from_user.first_name}")
 
 
 async def get_voice(update: Update, context: CallbackContext) -> None:
     '''Save any voicenotes sent to the bot, and send back the last 5'''
-    vn = get_last_vn() # Save the filename of the last voicenote before saving the new one
+    
+    # Save the filename of the last voicenote before saving the new one
+    # Using Try/Except because otherwise it throws an error and breaks when there are no voice notes yet
+    try:
+        vn = get_last_vn() 
+    except: IndexError
+    
     # get basic info about the voice note file and prepare it for downloading
     new_file = await context.bot.get_file(update.message.voice.file_id)
     # download the voice note as a file
@@ -133,7 +163,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     )
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Here are the voicenotes preceding the one you just submitted:"
+        text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
     )
     await context.bot.send_voice(
         chat_id=update.effective_chat.id,
@@ -168,10 +198,15 @@ def concat_voicenotes():
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     vn = get_last_vn()
+
+    string_elements =  vn.split('-')
+    name = string_elements[2]
+    date = datetime.strptime(string_elements[0], '%Y%m%d').strftime('%d/%m/%Y')
+
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Hi {update.message.from_user.first_name}! \
-Please listen to this voicenote and respond with your own voicenote."
+        text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
+Please listen to this latest voicenote, which was sent by {name} on {date}, and respond with your own voicenote."
     )
     await context.bot.send_voice(
         chat_id=update.effective_chat.id,
@@ -193,6 +228,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('start', start_command))
     # /Latest command
     application.add_handler(CommandHandler('latest', latest))
+    # /Help command
+    application.add_handler(CommandHandler('help', help_command))
     # /Prompt command
     application.add_handler(CommandHandler('prompt', prompt_command))
 
