@@ -35,6 +35,10 @@ markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_ti
 ## COMMANDS
 # BOT'S RESPONSE TO /START
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Set up logging for each conversation
+    chat_id=update.effective_chat.id
+    file_handler = logging.FileHandler(f'chat_{chat_id}.log')
+    logger.addHandler(file_handler)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
     await context.bot.send_message(
@@ -180,7 +184,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
         chat_id=update.effective_chat.id,
         text=f"Thanks for recording, {update.message.from_user.first_name}!"
     )
-    transcript = transcribe(filename)
+    transcript = await transcribe(filename)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f"Transcription: {transcript}"
