@@ -138,20 +138,39 @@ async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         logger.info(f"Sent response to {update.message.from_user.first_name}")
 
+async def transcribe(filename):
+    txt = f"{filename}.txt"
+    #webm = f"{filename}.webm"
+    webm = 'temp.webm'
+    # Telegram defaults to opus in ogg, but OpenAI requires opus in webm.
+    # We can seemingly double the speech rate (halving the price) without affecting transcription quality.
+    subprocess.run([
+        'ffmpeg','-i',f'file:{filename}','-c:a','libopus','-b:a','64k','-af','atempo=2','-y',webm,
+        ], check=True)
+    audio_file = open(webm,'rb')
+    transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
+    if 'film' in transcript.lower():
+        await get_films(transcript,update,context)
+        logger.info('Recording film recommendations')
+    with open(txt,"w",encoding="utf-8") as f:
+        f.write(transcript)
+    logger.info(f"Transcribed {filename} to {filename}.txt")
+    os.remove('temp.webm')
+    return transcript
 
 async def get_voice(update: Update, context: CallbackContext) -> None:
     '''Save any voicenotes sent to the bot, and send back the last 5'''
     
     # Save the filename of the last voicenote before saving the new one
     # Using Try/Except because otherwise it throws an error and breaks when there are no voice notes yet
-    try:
-        vn = get_last_vn() 
-    except: IndexError
+    #try:
+    #    vn = get_last_vn() 
+    #except: IndexError
     
     # get basic info about the voice note file and prepare it for downloading
     new_file = await context.bot.get_file(update.message.voice.file_id)
     # download the voice note as a file
-    ts = datetime.datetime.now().strftime("%Y%m%d-%H:%M")
+    ts = datetime.now().strftime("%Y%m%d-%H:%M")
     filename = f"{ts}-{update.message.from_user.first_name}-{new_file.file_unique_id}.ogg"
     await new_file.download_to_drive(filename)
     logger.info(f"Downloaded voicenote as {filename}")
@@ -161,15 +180,20 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
         chat_id=update.effective_chat.id,
         text=f"Thanks for recording, {update.message.from_user.first_name}!"
     )
+    transcript = transcribe(filename)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
+        text=f"Transcription: {transcript}"
     )
-    await context.bot.send_voice(
-        chat_id=update.effective_chat.id,
-        voice=vn
-    )
-    concat_voicenotes()
+    #await context.bot.send_message(
+    #    chat_id=update.effective_chat.id,
+    #    text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
+    #)
+    #await context.bot.send_voice(
+    #    chat_id=update.effective_chat.id,
+    #    voice=vn
+    #)
+    #concat_voicenotes()
 
 def get_last_vn():
     '''Get the latest ogg file in the current directory'''
