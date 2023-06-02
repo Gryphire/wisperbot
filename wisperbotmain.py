@@ -153,9 +153,6 @@ async def transcribe(filename):
         ], check=True)
     audio_file = open(webm,'rb')
     transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
-    if 'film' in transcript.lower():
-        await get_films(transcript,update,context)
-        logger.info('Recording film recommendations')
     with open(txt,"w",encoding="utf-8") as f:
         f.write(transcript)
     logger.info(f"Transcribed {filename} to {filename}.txt")
