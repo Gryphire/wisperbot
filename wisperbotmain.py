@@ -37,8 +37,9 @@ markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_ti
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Set up logging for each conversation
     chat_id=update.effective_chat.id
-    file_handler = logging.FileHandler(f'chat_{chat_id}.log')
-    logger.addHandler(file_handler)
+    chat_type: str = update.message.chat.type
+    curr_date: str = datetime.now().strftime("%Y%m%d-%H%M%S")
+    file_handler = logging.FileHandler(f'chat_{chat_id}_{chat_type}_{curr_date}.log')
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
     await context.bot.send_message(
