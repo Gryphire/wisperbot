@@ -269,22 +269,20 @@ async def log(update, log_msg):
     '''Log a message to the correct log file'''
     chat_id = update.message.chat.id
     dest_dir = await setup_dir(update)
-    logger = loggers.get(chat_id)
     log_file = f'{dest_dir}/chat_{chat_id}.log'
+    handler = logging.FileHandler(log_file)
+    # Explicitly define formatting for the logging handler
+    formatting = formatting = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatting)
+
+    logger = loggers.get(chat_id)
     if not logger:
         logger = logging.getLogger(f"chat-{chat_id}")
         logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(log_file)
         logger.addHandler(handler)
         loggers[chat_id] = logger
         logger.info(f'Now logging to {log_file}')
-
-    logger.setLevel(logging.INFO)
-    file_handler = logging.FileHandler(log_file)
-
-    # Explicitly define formatting for the logging file_handler
-    formatting = formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatting)
     logger.info(log_msg)
 
 ## COMPILE ALL FUNCTIONS INTO APP
