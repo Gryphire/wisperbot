@@ -15,7 +15,7 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder, CommandHa
 
 ## TOKEN SETUP
 TOKEN = 'insert your bot token here'
-openai.api_key = 'insert your openAI api key here
+openai.api_key = 'insert your openAI api key here'
 
 ## LOGGER FILE SETUP
 logging.basicConfig(
@@ -40,6 +40,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type: str = update.message.chat.type
     curr_date: str = datetime.now().strftime("%Y%m%d-%H%M%S")
     file_handler = logging.FileHandler(f'chat_{chat_id}_{chat_type}_{curr_date}.log')
+    # Explicitly define formatting for the logging file_handler
+    formatting = formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatting)
+    # Activate
+    logger.addHandler(file_handler)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
     await context.bot.send_message(
