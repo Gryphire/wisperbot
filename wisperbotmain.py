@@ -41,6 +41,10 @@ markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_ti
 
 async def setup_dir(update: Update, context: CallbackContext) -> None:
     '''Create a directory based on the chat type and chat id and start logging to it'''
+    # Check that logging is working. If it's working correctly, there are two loggers:
+    #   one to stderr (printing in the terminal) and one to a file
+    if len(logger.handlers) == 2:
+        return
     chat_id: str = update.effective_chat.id
     chat_type: str = update.message.chat.type
     #start_time: str = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -53,12 +57,14 @@ async def setup_dir(update: Update, context: CallbackContext) -> None:
     try:
         os.makedirs(f'{dest_dir}')
     except FileExistsError:
-        logger.warning(f'{dest_dir} already exists')
-    file_handler = logging.FileHandler(f'{dest_dir}/chat_{chat_id}.log')
+        pass
+    log_file = f'{dest_dir}/chat_{chat_id}.log'
+    file_handler = logging.FileHandler(log_file)
     # Explicitly define formatting for the logging file_handler
     formatting = formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatting)
     logger.addHandler(file_handler)
+    logger.info(f'Now logging to {log_file}')
     return dest_dir
 
 ## COMMANDS
