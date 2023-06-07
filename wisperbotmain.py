@@ -24,6 +24,13 @@ logging.basicConfig(
 # Save logger to object that we can call in future to save events to
 logger = logging.getLogger()
 
+class HTTPXFilter(logging.Filter):
+    '''Filter out lines starting with HTTP'''
+    def filter(self, record):
+        return not record.msg.startswith("HTTP")
+
+logging.getLogger("httpx").addFilter(HTTPXFilter())
+
 # BOT'S PROMPT CHOICE SYSTEM
 # Determine what question is asked
 prompt_reply_keyboard = [
