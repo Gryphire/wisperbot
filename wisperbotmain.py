@@ -6,16 +6,16 @@ import logging
 import os
 import time
 import subprocess
-import sys
-import re
+import dotenv
 import openai
 from operator import itemgetter
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes, CallbackContext)
 
 ## TOKEN SETUP
-TOKEN = 'insert your bot token here'
-openai.api_key = 'insert your openAI api key here'
+dotenv.load_dotenv()
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 ## LOGGER FILE SETUP
 logging.basicConfig(
