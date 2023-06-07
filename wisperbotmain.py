@@ -39,19 +39,34 @@ prompt_reply_keyboard = [
 # Format the 'keyboard' (which is actually the multiple choice field)
 markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
 
-## COMMANDS
-# BOT'S RESPONSE TO /START
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Set up logging for each conversation
-    chat_id=update.effective_chat.id
+async def setup_dir(update: Update, context: CallbackContext) -> None:
+    '''Create a directory based on the chat type and chat id and start logging to it'''
+    chat_id: str = update.effective_chat.id
     chat_type: str = update.message.chat.type
-    curr_date: str = datetime.now().strftime("%Y%m%d-%H%M%S")
-    file_handler = logging.FileHandler(f'chat_{chat_id}_{chat_type}_{curr_date}.log')
+    #start_time: str = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Set a readable name for the chat
+    if chat_type == 'private':
+        name = update.message.from_user.full_name
+    elif 'group' in chat_type: # To inlude both group and supergroup
+        name = update.message.chat.title
+    dest_dir = f'logs/{chat_type}/{name}-{chat_id}'
+    try:
+        os.makedirs(f'{dest_dir}')
+    except FileExistsError:
+        logger.warning(f'{dest_dir} already exists')
+    file_handler = logging.FileHandler(f'{dest_dir}/chat_{chat_id}.log')
     # Explicitly define formatting for the logging file_handler
     formatting = formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatting)
-    # Activate
     logger.addHandler(file_handler)
+    return dest_dir
+
+## COMMANDS
+# BOT'S RESPONSE TO /START
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''Start a session when the bot receives /start'''
+    # Activate
+    await setup_dir(update,context)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
     await context.bot.send_message(
@@ -132,6 +147,7 @@ async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # First we need to determine the chat type: solo with bot, or group chat with bot?
     # This is important because in a group chat, people may not be talking to the bot, and we want to 
     # ensure that the bot only responds when spoken to.
+    await setup_dir(update,context)
     chat_type: str = update.message.chat.type
     usertext: str = update.message.text
     processed_usertext: str = usertext.lower()
@@ -156,13 +172,14 @@ async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Sent response to {update.message.from_user.first_name}")
 
 async def transcribe(filename):
+    await setup_dir(update,context)
     txt = f"{filename}.txt"
     #webm = f"{filename}.webm"
     webm = 'temp.webm'
     # Telegram defaults to opus in ogg, but OpenAI requires opus in webm.
     # We can seemingly double the speech rate (halving the price) without affecting transcription quality.
     subprocess.run([
-        'ffmpeg','-i',f'file:{filename}','-c:a','libopus','-b:a','64k','-af','atempo=2','-y',webm,
+        'ffmpeg','-i',f'file:"{filename}"','-c:a','libopus','-b:a','64k','-af','atempo=2','-y',webm,
         ], check=True)
     audio_file = open(webm,'rb')
     transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
@@ -259,7 +276,7 @@ if __name__ == '__main__':
 
     # Connect our text message and audio handlers to the app
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), msg))
-    application.add_handler(MessageHandler(filters.VOICE , get_voice))
+    application.add_handler(MessageHandler(filters.VOICE, get_voice))
 
     ## Connect our command handlers to the app
     # /Start command
