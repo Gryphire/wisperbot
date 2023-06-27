@@ -10,7 +10,8 @@ import dotenv
 import openai
 from operator import itemgetter
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
-from telegram.ext import (filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes, CallbackContext)
+from telegram.ext import (filters, MessageHandler, ApplicationBuilder, 
+                          CommandHandler, ContextTypes, CallbackContext)
 
 ## TOKEN SETUP
 dotenv.load_dotenv()
@@ -27,10 +28,59 @@ class HTTPXFilter(logging.Filter):
     def filter(self, record):
         return not record.msg.startswith("HTTP")
 
+top_level_logger = logging.getLogger("top_level")
+top_level_handler = logging.FileHandler("central_log.log")
+top_level_formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+top_level_handler.setFormatter(top_level_formatting)
+top_level_logger.setLevel(logging.INFO)
+top_level_logger.addHandler(top_level_handler)
+top_level_logger.addFilter(HTTPXFilter())
+top_level_logger.propagate = False
 # Save logger to object that we can call in future to save events to
 logging.getLogger("httpx").addFilter(HTTPXFilter())
 # Keep a dictionary of loggers:
-loggers = {}
+chat_handlers = {}
+
+class ChatHandler:
+    def __init__(self, chat_id, update=None, context=None):
+        self.chat_id = chat_id
+        self.chat_type = update.message.chat.type
+        self.context = context
+        if self.chat_type == 'private':
+            self.name = update.message.from_user.full_name
+        elif 'group' in self. chat_type: # To inlude both group and supergroup
+            self.name = update.message.chat.title
+        self.logger = self.get_logger()
+
+    @property
+    def directory(self):
+        dest_dir = f'files/{self.chat_type}/{self.name}-{self.chat_id}'
+        try:
+            os.makedirs(f'{dest_dir}')
+        except FileExistsError:
+            pass
+        return dest_dir
+
+    def get_logger(self):
+        log_file = f'{self.directory}/chat_{self.chat_id}'
+        formatting = formatting = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler = logging.FileHandler(log_file)
+        handler.setFormatter(formatting)
+        logger = logging.getLogger(f"chat-{self.chat_id}")
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        logger.info(f'Now logging to {log_file}')
+        return logger
+
+    def log(self, msg):
+        '''Log a message to the correct log file'''
+        self.logger.info(msg)
+        top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+
+    async def send_msg(self, text, reply_markup = None):
+        '''Send a message in this chat'''
+        await self.context.bot.send_message(self.chat_id, text, reply_markup = reply_markup)
 
 # BOT'S PROMPT CHOICE SYSTEM
 # Determine what question is asked
@@ -40,61 +90,35 @@ prompt_reply_keyboard = [
 # Format the 'keyboard' (which is actually the multiple choice field)
 markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
 
-async def setup_dir(update: Update) -> None:
-    '''Create a directory based on the chat type and chat id and set up logging to it'''
-    # Check that logging is working. If it's working correctly, there are two loggers:
-    #   one to stderr (printing in the terminal) and one to a file
-    chat_id: str = update.effective_chat.id
-    chat_type: str = update.message.chat.type
-    #start_time: str = datetime.now().strftime("%Y%m%d-%H%M%S")
-    # Set a readable name for the chat
-    if chat_type == 'private':
-        name = update.message.from_user.full_name
-    elif 'group' in chat_type: # To inlude both group and supergroup
-        name = update.message.chat.title
-    dest_dir = f'files/{chat_type}/{name}-{chat_id}'
-    try:
-        os.makedirs(f'{dest_dir}')
-    except FileExistsError:
-        pass
-    return dest_dir
-
 ## COMMANDS
 # BOT'S RESPONSE TO /START
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Start a session when the bot receives /start'''
     # Activate
-    await setup_dir(update)
+    chat = await initialize_chat_handler(update,context)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latest command to refresh your memory and send a voicenote of your own.\n\nFor more information about the aim of WisperBot, please use the /help command."
+    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latest command to refresh your memory and send a voicenote of your own.\n\nFor more information about the aim of WisperBot, please use the /help command."
     )
-    await log(update,f"Sent Start instructions to {update.message.from_user.first_name}")
+    chat.log(f"Sent Start instructions to {chat.name}")
 
 # BOT'S RESPONSE TO /HELP
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions."
-    )
-    await log(update,f"Sent help info to {update.message.from_user.first_name}")
-
+    chat = await initialize_chat_handler(update,context)
+    await chat.send_msg(text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions.")
+    chat.log(f"Sent help info to {update.message.from_user.first_name}")
 
 # BOT's RESPONSE TO /PROMPT
 async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # When the user uses the /prompt commant, then...
     # the bot will reply with the following reply text
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Yay! Happy to hear you'd like to receive a prompt to get going, {update.message.from_user.first_name}!\n\nWhat sort of prompt would you like to receive? Something about...",
+    chat = await initialize_chat_handler(update,context)
+    await chat.send_msg(text=f"Yay! Happy to hear you'd like to receive a prompt to get going, {update.message.from_user.first_name}!\n\nWhat sort of prompt would you like to receive? Something about...",
         reply_markup = markup
     )
-    await log(update,f"Sent new prompt to {update.message.from_user.first_name}")
-
+    chat.log(f"Sent new prompt to {update.message.from_user.first_name}")
 
 ## MESSAGES
 # COMPILING RESPONSE TO USER MESSAGE
@@ -140,35 +164,30 @@ def create_response(usertext: str) -> str:
         return response['choices'][0]["text"]
 
 # HANDLING MESSAGE RESPONSE
-async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Given a message, echo it back with their name'''
     # First we need to determine the chat type: solo with bot, or group chat with bot?
     # This is important because in a group chat, people may not be talking to the bot, and we want to 
     # ensure that the bot only responds when spoken to.
-    chat_type: str = update.message.chat.type
+    chat = await initialize_chat_handler(update,context)
     usertext: str = update.message.text
     processed_usertext: str = usertext.lower()
 
-    if chat_type == 'group':
+    if chat.chat_type == 'group':
         # Make sure to only respond when reference is made to WisperBot
         if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
             # Only respond if Wisperbot's name is called in user's message
-            await context.bot.send_message(
-                chat_id = update.effective_chat.id,
-                text = create_response(usertext),
-            )
-            await log(update,f"Sent response to {update.message.from_user.first_name}")
+            chat.send_msg(text=create_response(usertext))
+            chat.log(f"Sent response to {update.message.from_user.first_name}")
         else:
             return
     else:
         # Respond as usual without checking if WisperBot's name is called
-        await context.bot.send_message(
-                chat_id = update.effective_chat.id,
-                text = create_response(usertext),
-            )
-        await log(update,f"Sent response to {update.message.from_user.first_name}")
+        await chat.send_msg(text=create_response(usertext))
+        chat.log(f"Sent response to {update.message.from_user.first_name}")
 
 async def transcribe(update: Update,filename):
+    chat = await initialize_chat_handler(update)
     txt = f"{filename}.txt"
     #webm = f"{filename}.webm"
     webm = 'temp.webm'
@@ -180,38 +199,32 @@ async def transcribe(update: Update,filename):
     transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
     with open(txt,"w",encoding="utf-8") as f:
         f.write(transcript)
-    await log(update,f"Transcribed {filename} to {filename}.txt")
+    chat.log(f"Transcribed {filename} to {filename}.txt")
     os.remove('temp.webm')
     return transcript
 
 async def get_voice(update: Update, context: CallbackContext) -> None:
     '''Save any voicenotes sent to the bot, and send back the last 5'''
     
+    chat = await initialize_chat_handler(update,context)
     # Save the filename of the last voicenote before saving the new one
     # Using Try/Except because otherwise it throws an error and breaks when there are no voice notes yet
     #try:
     #    vn = get_last_vn() 
     #except: IndexError
-    
     # get basic info about the voice note file and prepare it for downloading
     new_file = await context.bot.get_file(update.message.voice.file_id)
     # download the voice note as a file
     ts = datetime.now().strftime("%Y%m%d-%H:%M")
-    dest_dir = await setup_dir(update)
+    dest_dir = chat.directory
     filename = f"{dest_dir}/{ts}-{update.message.from_user.first_name}-{new_file.file_unique_id}.ogg"
     await new_file.download_to_drive(filename)
-    await log(update,f"Downloaded voicenote as {filename}")
+    chat.log(f"Downloaded voicenote as {filename}")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     time.sleep(2) # stupid but otherwise it looks like it responds before it gets your message
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Thanks for recording, {update.message.from_user.first_name}!"
-    )
+    await chat.send_msg(text=f"Thanks for recording, {update.message.from_user.first_name}!")
     transcript = await transcribe(update,filename)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Transcription: {transcript}"
-    )
+    await chat.send_msg(text=f"Transcription: {transcript}")
     #await context.bot.send_message(
     #    chat_id=update.effective_chat.id,
     #    text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
@@ -224,7 +237,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 
 async def get_last_vn():
     '''Get the latest ogg file in the current directory'''
-    ogg_files = glob.glob("*.ogg")
+    ogg_files = glob.glob("files/*/*/*.ogg")
     file_times = {file:os.path.getmtime(file) for file in ogg_files}
     file_times = sorted(file_times.items(), key=itemgetter(1), reverse=True)
 
@@ -244,46 +257,32 @@ async def concat_voicenotes():
     subprocess.run([
         'ffmpeg','-f','concat','-safe','0','-i','inputs','-c','copy','-y','latest.ogg',
         ], check=False)
-    await log(update,f"Updated latest.ogg")
+    chat.log(f"Updated latest.ogg")
 
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    vn = get_last_vn()
-
-    string_elements =  vn.split('-')
+    vn = await get_last_vn()
+    string_elements = vn.split('-')
     name = string_elements[2]
     date = datetime.strptime(string_elements[0], '%Y%m%d').strftime('%d/%m/%Y')
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
-Please listen to this latest voicenote, which was sent by {name} on {date}, and respond with your own voicenote."
-    )
+    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
+Please listen to this latest voicenote, which was sent by {name} on {date}, and respond with your own voicenote.")
     await context.bot.send_voice(
         chat_id=update.effective_chat.id,
         voice=vn
     )
-    await log(update,f"Sent {vn} to {update.message.from_user.first_name}")
+    chat.log(f"Sent {vn} to {update.message.from_user.first_name}")
 
-async def log(update, log_msg):
-    '''Log a message to the correct log file'''
-    chat_id = update.message.chat.id
-    dest_dir = await setup_dir(update)
-    log_file = f'{dest_dir}/chat_{chat_id}.log'
-    handler = logging.FileHandler(log_file)
-    # Explicitly define formatting for the logging handler
-    formatting = formatting = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatting)
 
-    logger = loggers.get(chat_id)
-    if not logger:
-        logger = logging.getLogger(f"chat-{chat_id}")
-        logger.setLevel(logging.INFO)
-        logger.addHandler(handler)
-        loggers[chat_id] = logger
-        logger.info(f'Now logging to {log_file}')
-    logger.info(log_msg)
+async def initialize_chat_handler(update,context=None):
+    chat_id = update.effective_chat.id
+    if chat_id not in chat_handlers:
+        chat_handlers[chat_id] = ChatHandler(chat_id,update,context)
+        chat = chat_handlers[chat_id]
+    chat = chat_handlers[chat_id]
+    return chat
+
 
 ## COMPILE ALL FUNCTIONS INTO APP
 if __name__ == '__main__':
@@ -291,7 +290,7 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
 
     # Connect our text message and audio handlers to the app
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), msg))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_msg))
     application.add_handler(MessageHandler(filters.VOICE, get_voice))
 
     ## Connect our command handlers to the app
