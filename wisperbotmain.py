@@ -46,6 +46,7 @@ class ChatHandler:
         self.chat_id = chat_id
         self.chat_type = update.message.chat.type
         self.context = context
+        self.prompt = None
         if self.chat_type == 'private':
             self.name = update.message.from_user.full_name
         elif 'group' in self. chat_type: # To inlude both group and supergroup
@@ -98,7 +99,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await initialize_chat_handler(update,context)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latest command to refresh your memory and send a voicenote of your own.\n\nFor more information about the aim of WisperBot, please use the /help command."
+    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using.\n\nFor more information about the aim of WisperBot, please use the /help command."
     )
     chat.log(f"Sent Start instructions to {chat.name}")
 
@@ -123,31 +124,35 @@ async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ## MESSAGES
 # COMPILING RESPONSE TO USER MESSAGE
 ## Note: this function only will determine WHAT to send back, if will not send anything back YET
-def create_response(usertext: str) -> str:
+## It will also store the latest prompt if it detects one as an attribute to the chat object
+## Might be a better way to separate out the handling of which prompt is chosen into another function?
+def create_response(chat, usertext: str) -> str:
     # Python is difficult about case, so we want to make sure it's all equalized to lowercase 
     # (which is what we're defining it to look out for) before it hits processing
     processed_usertext: str = usertext.lower()
 
     # Check if user is greeting the bot, if so respond with a greeting too
     if 'hello' in processed_usertext or 'hi' in processed_usertext or 'hey' in processed_usertext:
-        return f"Hi there! Welcome to WisperBot. Please use the /start command to get instructions on how to get started!"
+        response = f"Hi there! Welcome to WisperBot. Please use the /start command to get instructions on how to get started!"
 
     # Check if user is asking how the bot is doing
     if 'how are you?' in processed_usertext:
-        return f"I'm doing good, to the extent that that's possible for a bot! Hope you're having a lovely day too!"
+        response = f"I'm doing good, to the extent that that's possible for a bot! Hope you're having a lovely day too!"
 
     # Check if user is thanking WisperBot
     if 'thanks' in processed_usertext or 'thank you' in processed_usertext:
-        return f"You're very welcome! Remember, if you get stuck, you can always get back on track with /start or /help."
+        response = f"You're very welcome! Remember, if you get stuck, you can always get back on track with /start or /help."
 
     # PROMPT RESPONSES
     # Value tensions
     if 'value tensions' in processed_usertext:
-        return f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD How do you balance taking care of others and taking care of yourself?\n\nHave fun chatting!"
+        chat.prompt = "Value Tensions"
+        response =  f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD How do you balance taking care of others and taking care of yourself?\n\nHave fun chatting!"
 
     # Authentic relating
     if 'authentic relating' in processed_usertext:
-        return f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
+        chat.prompt = "Authentic Relating"
+        response = f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
 
     # If none of these are detected (i.e., the user is saying something else), respond with...
     # An integration with OpenAI's DaVinci LLM! Yay! That way the interaction is smoother and the user doesn't keep running into
@@ -161,7 +166,12 @@ def create_response(usertext: str) -> str:
             top_p = 1,
             frequency_penalty=0.0
         )
-        return response['choices'][0]["text"]
+        response = response['choices'][0]["text"]
+
+    if chat.prompt:
+        chat.log(f"{chat.name} chose prompt {chat.prompt}")
+
+    return response
 
 # HANDLING MESSAGE RESPONSE
 async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,13 +187,13 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Make sure to only respond when reference is made to WisperBot
         if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
             # Only respond if Wisperbot's name is called in user's message
-            chat.send_msg(text=create_response(usertext))
+            chat.send_msg(text=create_response(chat,usertext))
             chat.log(f"Sent response to {update.message.from_user.first_name}")
         else:
             return
     else:
         # Respond as usual without checking if WisperBot's name is called
-        await chat.send_msg(text=create_response(usertext))
+        await chat.send_msg(text=create_response(chat,usertext))
         chat.log(f"Sent response to {update.message.from_user.first_name}")
 
 async def transcribe(update: Update,filename):
@@ -260,20 +270,34 @@ async def concat_voicenotes():
     chat.log(f"Updated latest.ogg")
 
 
-async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def latestaudio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     vn = await get_last_vn()
     string_elements = vn.split('-')
     name = string_elements[2]
-    date = datetime.strptime(string_elements[0], '%Y%m%d').strftime('%d/%m/%Y')
+    # Commenting this out as the naming convention has changed.
+    # We could optionally change it back to include the date or else get the date from the file metadata?
+    #date = datetime.strptime(string_elements[0], '%Y%m%d').strftime('%d/%m/%Y')
 
     await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
-Please listen to this latest voicenote, which was sent by {name} on {date}, and respond with your own voicenote.")
+Please listen to this latest voicenote, which was sent by {name}, and respond with your own voicenote.")
     await context.bot.send_voice(
         chat_id=update.effective_chat.id,
         voice=vn
     )
     chat.log(f"Sent {vn} to {update.message.from_user.first_name}")
 
+
+async def latestprompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = await initialize_chat_handler(update,context)
+    prompt = chat.prompt
+
+    if prompt:
+        await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
+    The prompt you chose was {prompt}.")
+        chat.log(f"Sent last prompt ({prompt}) to {update.message.from_user.first_name}")
+    else:
+        await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! You have not yet specified a prompt. Please run /prompt to see the options :)")
+        chat.log(f"{update.message.from_user.first_name} asked for the last prompt but had not yet specified one we recognized")
 
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
@@ -296,8 +320,8 @@ if __name__ == '__main__':
     ## Connect our command handlers to the app
     # /Start command
     application.add_handler(CommandHandler('start', start_command))
-    # /Latest command
-    application.add_handler(CommandHandler('latest', latest))
+    # /Latestprompt command
+    application.add_handler(CommandHandler('latestprompt', latestprompt))
     # /Help command
     application.add_handler(CommandHandler('help', help_command))
     # /Prompt command
