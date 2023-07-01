@@ -97,7 +97,7 @@ class ChatHandler:
 # BOT'S PROMPT CHOICE SYSTEM
 # Determine what question is asked
 prompt_reply_keyboard = [
-    ["Value Tension ⚖️", "Authentic Relating 🤝"],
+    ["A Value Tension ⚖️, Wisper", "Authentic Relating 🤝, Wisper!"],
 ]
 # Format the 'keyboard' (which is actually the multiple choice field)
 markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
@@ -202,7 +202,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Make sure to only respond when reference is made to WisperBot
         if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
             # Only respond if Wisperbot's name is called in user's message
-            chat.send_msg(text=create_response(chat,usertext))
+            await chat.send_msg(text=create_response(chat,usertext))
             chat.log(f"Sent response to {update.message.from_user.first_name}")
         else:
             return
