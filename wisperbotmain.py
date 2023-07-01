@@ -9,6 +9,7 @@ import subprocess
 import dotenv
 import openai
 import random
+import urllib.request
 import pandas as pd
 from operator import itemgetter
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
@@ -90,6 +91,9 @@ class ChatHandler:
         '''Send a message in this chat'''
         await self.context.bot.send_message(self.chat_id, text, reply_markup = reply_markup)
 
+    async def send_img(self, photo):
+        await self.context.bot.send_photo(self.chat_id,photo)
+    
 # BOT'S PROMPT CHOICE SYSTEM
 # Determine what question is asked
 prompt_reply_keyboard = [
@@ -245,7 +249,9 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     time.sleep(2) # stupid but otherwise it looks like it responds before it gets your message
     await chat.send_msg(text=f"Thanks for recording, {update.message.from_user.first_name}!")
     transcript = await transcribe(update,filename)
-    await chat.send_msg(text=f"Transcription: {transcript}")
+    # Have commented this out because I don't want people to he able to read the transcript
+    #await chat.send_msg(text=f"Transcription: {transcript}")
+    
     #await context.bot.send_message(
     #    chat_id=update.effective_chat.id,
     #    text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
@@ -255,6 +261,46 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     #    voice=vn
     #)
     #concat_voicenotes()
+
+    ## IMAGE GENERATING SECTION OF THE GET-VOICE FUNCTION
+    ## Return keywords of transcription
+    keywords = openai.Completion.create(
+        model="text-davinci-003",
+        prompt="Extract keywords from this text:" + transcript,
+        temperature=0.5,
+        max_tokens=60,
+        top_p=1.0,
+        frequency_penalty=0.8,
+        presence_penalty=0.0
+    )
+    keywordslist = keywords['choices'][0]["text"]
+
+    ## Generate a DALL-E prompt based on these keywords
+    imgprompt = openai.Completion.create(
+        model="text-davinci-003",
+        prompt="Generate a prompt for a beautiful AI image using these keywords:" + keywordslist,
+        temperature=0.5,
+        max_tokens=60,
+        top_p=1.0,
+        frequency_penalty=0.8,
+        presence_penalty=0.0
+    )
+    imgpromptresult = imgprompt['choices'][0]["text"]
+
+    ## Generate actual image using this prompt
+    AIimg = openai.Image.create(
+        prompt = imgpromptresult,
+        n = 1,
+        size = "1024x1024"
+    )
+    # Retrieve the URL at which image is stored
+    imageURL = AIimg['data'][0]['url']
+    # Store online image in local .png file, by first defining the file name
+    img_filename = f"{dest_dir}/{ts}-{update.message.from_user.first_name}-{new_file.file_unique_id}.png"
+    urllib.request.urlretrieve(imageURL,img_filename)
+
+    await chat.send_img(photo=imageURL)
+
 
 async def get_last_vn():
     '''Get the latest ogg file in the current directory'''
