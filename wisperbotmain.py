@@ -8,6 +8,8 @@ import time
 import subprocess
 import dotenv
 import openai
+import random
+import pandas as pd
 from operator import itemgetter
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder, 
@@ -17,6 +19,11 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+## PROMPT FILE SETUP
+# Import prompts file
+fullpath = os.getcwd() + "/prompts.csv"
+promptdf = pd.read_csv(fullpath)
 
 ## LOGGER FILE SETUP
 logging.basicConfig(
@@ -86,7 +93,7 @@ class ChatHandler:
 # BOT'S PROMPT CHOICE SYSTEM
 # Determine what question is asked
 prompt_reply_keyboard = [
-    ["Value Tensions", "Authentic Relating"],
+    ["Value Tension ⚖️", "Authentic Relating 🤝"],
 ]
 # Format the 'keyboard' (which is actually the multiple choice field)
 markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
@@ -136,23 +143,27 @@ def create_response(chat, usertext: str) -> str:
         response = f"Hi there! Welcome to WisperBot. Please use the /start command to get instructions on how to get started!"
 
     # Check if user is asking how the bot is doing
-    if 'how are you?' in processed_usertext:
+    elif 'how are you' in processed_usertext:
         response = f"I'm doing good, to the extent that that's possible for a bot! Hope you're having a lovely day too!"
 
     # Check if user is thanking WisperBot
-    if 'thanks' in processed_usertext or 'thank you' in processed_usertext:
+    elif 'thanks' in processed_usertext or 'thank you' in processed_usertext:
         response = f"You're very welcome! Remember, if you get stuck, you can always get back on track with /start or /help."
 
     # PROMPT RESPONSES
     # Value tensions
-    if 'value tensions' in processed_usertext:
-        chat.prompt = "Value Tensions"
-        response =  f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD How do you balance taking care of others and taking care of yourself?\n\nHave fun chatting!"
+    elif 'value tension ⚖️' in processed_usertext:
+        # Randomly select a prompt from the Value Tension category from our prompt dataframe
+        randomVTprompt = random.choice(promptdf.prompt[promptdf.category.eq('value tension')].tolist())
+        # Include random prompt in response
+        response =  f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD {randomVTprompt}\n\nHave fun chatting!"
+        # Save chosen prompt
+        chat.prompt = randomVTprompt
 
     # Authentic relating
-    if 'authentic relating' in processed_usertext:
-        chat.prompt = "Authentic Relating"
+    elif 'authentic relating 🤝' in processed_usertext:
         response = f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
+        chat.prompt = "Authentic Relating"
 
     # If none of these are detected (i.e., the user is saying something else), respond with...
     # An integration with OpenAI's DaVinci LLM! Yay! That way the interaction is smoother and the user doesn't keep running into
@@ -255,7 +266,7 @@ async def get_last_vn():
 
     return most_recent_file
 
-async def concat_voicenotes():
+""" async def concat_voicenotes():
     '''Make the last 5 voicenotes into the latest voicenote'''
     ogg_files = glob.glob("20*.ogg")
     ogg_files.sort(key=os.path.getmtime)
@@ -267,19 +278,21 @@ async def concat_voicenotes():
     subprocess.run([
         'ffmpeg','-f','concat','-safe','0','-i','inputs','-c','copy','-y','latest.ogg',
         ], check=False)
-    chat.log(f"Updated latest.ogg")
+    chat.log(f"Updated latest.ogg") """
 
 
 async def latestaudio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = await initialize_chat_handler(update,context)
     vn = await get_last_vn()
     string_elements = vn.split('-')
-    name = string_elements[2]
+    print(string_elements)
+    name = string_elements[3]
     # Commenting this out as the naming convention has changed.
     # We could optionally change it back to include the date or else get the date from the file metadata?
     #date = datetime.strptime(string_elements[0], '%Y%m%d').strftime('%d/%m/%Y')
 
     await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
-Please listen to this latest voicenote, which was sent by {name}, and respond with your own voicenote.")
+Please listen to this latest voicenote, which was sent by {name}, and respond with a voicenote.")
     await context.bot.send_voice(
         chat_id=update.effective_chat.id,
         voice=vn
@@ -292,8 +305,7 @@ async def latestprompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = chat.prompt
 
     if prompt:
-        await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\n\
-    The prompt you chose was {prompt}.")
+        await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\nYour latest prompt was: {prompt}")
         chat.log(f"Sent last prompt ({prompt}) to {update.message.from_user.first_name}")
     else:
         await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! You have not yet specified a prompt. Please run /prompt to see the options :)")
@@ -320,6 +332,8 @@ if __name__ == '__main__':
     ## Connect our command handlers to the app
     # /Start command
     application.add_handler(CommandHandler('start', start_command))
+    # /Latestaudio command
+    application.add_handler(CommandHandler('latestaudio', latestaudio))
     # /Latestprompt command
     application.add_handler(CommandHandler('latestprompt', latestprompt))
     # /Help command
