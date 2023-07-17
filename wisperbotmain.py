@@ -110,7 +110,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await initialize_chat_handler(update,context)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nFor more information about the aim of WisperBot, please use the /help command."
+    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nWisperBot is created to help you connect with others through asynchronous audio-conversations! Wisper is all about sending each other voice messages, listening, and responding. In particular, we want to encourage you to really try to hear what someone is saying: in your conversation, try to reflect back on what the other person said, be respectful in your response, and ask clarifying questions to get to know the other person better!\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nAre you using WisperBot in a group chat? Make sure that you include the bot's name (e.g., Wisper or WisperBot) in your message so the bot knows that you're talking to it and not one of your fellow group members. (:\n\nFor more information about the aim of WisperBot, please use the /help command. Happy Wispering!"
     )
     chat.log(f"Sent Start instructions to {chat.name}")
 
@@ -168,7 +168,12 @@ def create_response(chat, usertext: str) -> str:
     elif 'authentic relating 🤝' in processed_usertext:
         response = f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
         chat.prompt = "Authentic Relating"
+    
+    # INSTEAD WHEN THE BOT ENCOUNTERS UNSCRIPTED INPUT FROM USER, DO THIS...
+    else:
+        response = f"Sorry, I'm not sure I understand. Remember, I'm only here to facilitate your audio message conversations by providing a prompt whenever you need me to. Unsure how to get started? Use the /start command to get instructions. ^^"
 
+    """ CURRENTLY COMMENTING OUT THE OPENAI RESPONSES DUE TO IT DISTRACTING FROM AUDIO MESSAGING
     # If none of these are detected (i.e., the user is saying something else), respond with...
     # An integration with OpenAI's DaVinci LLM! Yay! That way the interaction is smoother and the user doesn't keep running into
     # a wall whenever they say something that our pre-set message detection doesn't recognize.
@@ -181,7 +186,7 @@ def create_response(chat, usertext: str) -> str:
             top_p = 1,
             frequency_penalty=0.0
         )
-        response = response['choices'][0]["text"]
+        response = response['choices'][0]["text"] """
 
     if chat.prompt:
         chat.log(f"{chat.name} chose prompt {chat.prompt}")
@@ -247,7 +252,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     chat.log(f"Downloaded voicenote as {filename}")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     time.sleep(2) # stupid but otherwise it looks like it responds before it gets your message
-    await chat.send_msg(text=f"Thanks for recording, {update.message.from_user.first_name}!")
+    #await chat.send_msg(text=f"Thanks for recording, {update.message.from_user.first_name}!")
     transcript = await transcribe(update,filename)
     # Have commented this out because I don't want people to he able to read the transcript
     #await chat.send_msg(text=f"Transcription: {transcript}")
@@ -262,7 +267,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     #)
     #concat_voicenotes()
 
-    ## IMAGE GENERATING SECTION OF THE GET-VOICE FUNCTION
+"""  ## IMAGE GENERATING SECTION OF THE GET-VOICE FUNCTION
     ## Return keywords of transcription
     keywords = openai.Completion.create(
         model="text-davinci-003",
@@ -274,6 +279,8 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
         presence_penalty=0.0
     )
     keywordslist = keywords['choices'][0]["text"]
+    await chat.send_msg(f"These keywords have been extracted from your voice note: " + keywordslist)
+    chat.log(f"Extracted keywords {keywordslist} from voicenote {filename}")
 
     ## Generate a DALL-E prompt based on these keywords
     imgprompt = openai.Completion.create(
@@ -286,6 +293,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
         presence_penalty=0.0
     )
     imgpromptresult = imgprompt['choices'][0]["text"]
+    chat.log(f"Generated DALL-E image prompt from keywords of {filename}")
 
     ## Generate actual image using this prompt
     AIimg = openai.Image.create(
@@ -298,8 +306,9 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     # Store online image in local .png file, by first defining the file name
     img_filename = f"{dest_dir}/{ts}-{update.message.from_user.first_name}-{new_file.file_unique_id}.png"
     urllib.request.urlretrieve(imageURL,img_filename)
-
+    # Send image to chat
     await chat.send_img(photo=imageURL)
+    chat.log(f"Generated and sent AI image of {filename}") """
 
 
 async def get_last_vn():
