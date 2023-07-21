@@ -6,14 +6,14 @@ import logging
 import os
 import time
 import subprocess
+import random
+#import urllib.request
+from operator import itemgetter
 import dotenv
 import openai
-import random
-import urllib.request
 import pandas as pd
-from operator import itemgetter
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import (filters, MessageHandler, ApplicationBuilder, 
+from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
                           CommandHandler, ContextTypes, CallbackContext)
 
 ## TOKEN SETUP
