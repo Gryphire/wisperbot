@@ -12,7 +12,7 @@ import random
 import urllib.request
 import pandas as pd
 from operator import itemgetter
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove     
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder, 
                           CommandHandler, ContextTypes, CallbackContext)
 
@@ -163,6 +163,7 @@ def create_response(chat, usertext: str) -> str:
         response =  f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD {randomVTprompt}\n\nHave fun chatting!"
         # Save chosen prompt
         chat.prompt = randomVTprompt
+        ReplyKeyboardRemove()
 
     # Authentic relating
     elif 'authentic relating 🤝' in processed_usertext:
