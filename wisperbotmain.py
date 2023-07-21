@@ -1,6 +1,7 @@
 #!/usr/bin/python
 ## LIBRARIES
 from datetime import datetime
+import json
 import glob
 import logging
 import os
@@ -54,11 +55,16 @@ class ChatHandler:
         self.chat_id = chat_id
         self.chat_type = update.message.chat.type
         self.context = context
-        self.prompt = None
         if self.chat_type == 'private':
             self.name = update.message.from_user.full_name
         elif 'group' in self. chat_type: # To inlude both group and supergroup
             self.name = update.message.chat.title
+        self.prompt_file = f'{self.directory}/chat_{self.chat_id}_prompt.json'
+        if os.path.exists(self.prompt_file):
+            with open(self.prompt_file,encoding='utf-8') as f:
+                self._prompt = json.load(f)
+        else:
+            self._prompt = None
         self.logger = self.get_logger()
 
     @property
@@ -69,6 +75,16 @@ class ChatHandler:
         except FileExistsError:
             pass
         return dest_dir
+
+    @property
+    def prompt(self):
+        return self._prompt
+
+    @prompt.setter
+    def prompt(self, value):
+        self._prompt = value
+        with open(self.prompt_file,'w',encoding='utf-8') as f:
+            json.dump(value, f)
 
     def get_logger(self):
         log_file = f'{self.directory}/chat_{self.chat_id}'
