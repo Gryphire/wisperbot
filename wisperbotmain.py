@@ -104,10 +104,17 @@ class ChatHandler:
         self.logger.info(msg)
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
 
+    def add_user(self,user):
+        if user.id not in self.user_list:
+            if user.username:
+                self.user_list[user.id] = user.username
+            else:
+                self.user_list[user.id] = user.first_name
+
     def get_user_list(self):
-        if self.chat_type not in ['group', 'supergroup']:
-            return
-        return self._user_list
+        if 'group' in self.chat_type: # To inlude both group and supergroup
+            return self._user_list
+        return {}
 
     def set_user_list(self, new_list):
         self._user_list = new_list
@@ -231,7 +238,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usertext: str = update.message.text
     processed_usertext: str = usertext.lower()
 
-    if chat.chat_type == 'group':
+    if 'group' in chat.chat_type: # To inlude both group and supergroup
         # Make sure to only respond when reference is made to WisperBot
         if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
             # Only respond if Wisperbot's name is called in user's message
@@ -280,7 +287,13 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     chat.log(f"Downloaded voicenote as {filename}")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     time.sleep(2) # stupid but otherwise it looks like it responds before it gets your message
-    #await chat.send_msg(text=f"Thanks for recording, {update.message.from_user.first_name}!")
+    other_users = [name for uid, name in chat.user_list.items() if uid != update.effective_user.id]
+    if other_users:
+        other_list = '@' + ', @'.join(other_users)
+        await chat.send_msg(f"""Thanks for recording, {update.message.from_user.first_name}!
+What about you, {other_list}?""")
+    else:
+        await chat.send_msg(f"Thanks for recording, {update.message.from_user.first_name}!")
     transcript = await transcribe(update,filename)
     # Have commented this out because I don't want people to he able to read the transcript
     #await chat.send_msg(text=f"Transcription: {transcript}")
@@ -396,17 +409,19 @@ async def latestprompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
+    user = update.effective_user
     if chat_id not in chat_handlers:
         chat_handlers[chat_id] = ChatHandler(chat_id,update,context)
         chat = chat_handlers[chat_id]
     chat = chat_handlers[chat_id]
+    chat.add_user(user)
     return chat
 
 async def on_user_join(update,context):
     chat = await initialize_chat_handler(update,context)
     for i in update.message.new_chat_members:
-        chat.user_list[i.id] = i.username
-    chat.log(f"User joined. Updated user list: {chat.user_list}")
+        chat.add_user(i)
+    chat.log(f"User(s) joined. Updated user list: {chat.user_list}")
 
 async def on_user_leave(update,context):
     chat = await initialize_chat_handler(update,context)
