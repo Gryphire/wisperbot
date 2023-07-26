@@ -66,6 +66,7 @@ class ChatHandler:
         else:
             self._prompt = None
         self.logger = self.get_logger()
+        self._user_list = {}
 
     @property
     def directory(self):
@@ -102,6 +103,16 @@ class ChatHandler:
         '''Log a message to the correct log file'''
         self.logger.info(msg)
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+
+    def get_user_list(self):
+        if self.chat_type not in ['group', 'supergroup']:
+            return
+        return self._user_list
+
+    def set_user_list(self, new_list):
+        self._user_list = new_list
+
+    user_list = property(get_user_list, set_user_list)
 
     async def send_msg(self, text, reply_markup = None):
         '''Send a message in this chat'''
@@ -391,6 +402,21 @@ async def initialize_chat_handler(update,context=None):
     chat = chat_handlers[chat_id]
     return chat
 
+async def on_user_join(update,context):
+    chat = await initialize_chat_handler(update,context)
+    for i in update.message.new_chat_members:
+        chat.user_list[i.id] = i.username
+    chat.log(f"User joined. Updated user list: {chat.user_list}")
+
+async def on_user_leave(update,context):
+    chat = await initialize_chat_handler(update,context)
+    user_id = update.message.left_chat_member.id
+    user_name = update.message.left_chat_member.username
+    try:
+        del chat.user_list[user_id]
+    except KeyError:
+        chat.log(f"A user who wasn't in the user_list left: {user_id} {user_name}")
+    chat.log(f"User left. Updated user list: {chat.user_list}")
 
 ## COMPILE ALL FUNCTIONS INTO APP
 if __name__ == '__main__':
@@ -412,6 +438,10 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('help', help_command))
     # /Prompt command
     application.add_handler(CommandHandler('prompt', prompt_command))
+    # User join handler
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, on_user_join))
+    # User leave handler
+    application.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, on_user_leave))
 
     # Run application and wait for messages to come in
     application.run_polling()
