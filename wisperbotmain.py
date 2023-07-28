@@ -201,8 +201,11 @@ def create_response(chat, usertext: str) -> str:
 
     # Authentic relating
     elif 'authentic relating 🤝' in processed_usertext:
-        response = f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD Try to be authentic!\n\nHave fun chatting!"
-        chat.prompt = "Authentic Relating"
+        # Randomly select a prompt from the Value Tension category from our prompt dataframe
+        randomARprompt = random.choice(promptdf.prompt[promptdf.category.eq('authentic relating')].tolist())
+        response = f"Cool. Let's see.. Here is my prompt around authentic relating:\n\n\U0001F4AD {randomARprompt}\n\nHave fun chatting!"
+        chat.prompt = randomARprompt
+        ReplyKeyboardRemove()
     
     # INSTEAD WHEN THE BOT ENCOUNTERS UNSCRIPTED INPUT FROM USER, DO THIS...
     else:
