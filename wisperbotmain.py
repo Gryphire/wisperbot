@@ -21,6 +21,12 @@ from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 openai.api_key = os.environ.get("OPENAI_API_KEY")
+TRANSCRIBE = os.environ.get("TRANSCRIBE")
+if TRANSCRIBE.lower() == 'false':
+    TRANSCRIBE = False
+else:
+    TRANSCRIBE = True
+print(TRANSCRIBE)
 
 ## PROMPT FILE SETUP
 # Import prompts file
@@ -297,7 +303,8 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 What about you, {other_list}?""")
     else:
         await chat.send_msg(f"Thanks for recording, {update.message.from_user.first_name}!")
-    transcript = await transcribe(update,filename)
+    if TRANSCRIBE:
+        transcript = await transcribe(update,filename)
     # Have commented this out because I don't want people to he able to read the transcript
     #await chat.send_msg(text=f"Transcription: {transcript}")
     
