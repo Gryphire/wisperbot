@@ -15,7 +15,7 @@ import openai
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
-                          CommandHandler, ContextTypes, CallbackContext)
+    CommandHandler, ContextTypes, CallbackContext, JobQueue)
 
 ## TOKEN SETUP
 dotenv.load_dotenv()
@@ -61,6 +61,7 @@ class ChatHandler:
         self.chat_id = chat_id
         self.chat_type = update.message.chat.type
         self.context = context
+        self.job_queue = context.job_queue
         if self.chat_type == 'private':
             self.name = update.message.from_user.full_name
         elif 'group' in self. chat_type: # To inlude both group and supergroup
@@ -277,10 +278,25 @@ async def transcribe(update: Update,filename):
     os.remove('temp.webm')
     return transcript
 
+async def send_prompt(context, update=None, Text=None):
+    try: # If it's scheduled, the variables are in context.job.data
+        update = context.job.data['update']
+        Text = context.job.data['Text']
+    except AttributeError: # otherwise they're in the function call
+        pass
+    chat = await initialize_chat_handler(update,context)
+    Text = context.job.data['Text']
+    if chat.last_audio == update.effective_message.message_id:
+        chat.log(f'Sending reminder: {Text}')
+        await chat.send_msg(Text)
+    else:
+        chat.log(f'New audio so no reminder needed')
+
 async def get_voice(update: Update, context: CallbackContext) -> None:
     '''Save any voicenotes sent to the bot, and send back the last 5'''
     
     chat = await initialize_chat_handler(update,context)
+    chat.last_audio = update.effective_message.message_id
     # Save the filename of the last voicenote before saving the new one
     # Using Try/Except because otherwise it throws an error and breaks when there are no voice notes yet
     #try:
@@ -317,6 +333,13 @@ What about you, {other_list}?""")
     #    voice=vn
     #)
     #concat_voicenotes()
+    for day in range(1,4): # 1-3
+        delay = day*24*60*60
+        if day == 1:
+            since = 'yesterday'
+        else:
+            since = f'{day} days ago'
+        chat.job_queue.run_once(send_prompt, delay, data={'update': update, 'Text': f"Would you like to respond to this message from {since}?"})
 
 """  ## IMAGE GENERATING SECTION OF THE GET-VOICE FUNCTION
     ## Return keywords of transcription
