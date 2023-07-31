@@ -143,7 +143,7 @@ class ChatHandler:
 # BOT'S PROMPT CHOICE SYSTEM
 # Determine what question is asked
 prompt_reply_keyboard = [
-    ["A Value Tension ⚖️, Wisper", "Authentic Relating 🤝, Wisper!"],
+    ["A Value Tension ⚖️, Wisper", "Authentic Relating 🤝, Wisper!", "A deep question 🤔, Wisper!"],
 ]
 # Format the 'keyboard' (which is actually the multiple choice field)
 markup = ReplyKeyboardMarkup(prompt_reply_keyboard, resize_keyboard=True, one_time_keyboard=True)
@@ -209,6 +209,16 @@ def create_response(chat, usertext: str) -> str:
         response =  f"Amazing. Here is my prompt for you around a value tension:\n\n\U0001F4AD {randomVTprompt}\n\nHave fun chatting!"
         # Save chosen prompt
         chat.prompt = randomVTprompt
+        ReplyKeyboardRemove()
+    
+    # Deep question 
+    elif 'deep question 🤔' in processed_usertext:
+        # Randomly select a prompt from the Value Tension category from our prompt dataframe
+        randomDQprompt = random.choice(promptdf.prompt[promptdf.category.eq('deep question')].tolist())
+        # Include random prompt in response
+        response =  f"Oh fun! Here is my deep question for you:\n\n\U0001F4AD {randomDQprompt}\n\nHave fun chatting!"
+        # Save chosen prompt
+        chat.prompt = randomDQprompt
         ReplyKeyboardRemove()
 
     # Authentic relating
