@@ -14,8 +14,8 @@ import dotenv
 import openai
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
-    CommandHandler, ContextTypes, CallbackContext, JobQueue)
+# FOR THE SCHEDULER (JOBQUEUE) TO WORK, MAKE SURE YOU INSTALL THIS IN TERMINAL: pip install python-telegram-bot[job-queue] --pre
+from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes, CallbackContext, JobQueue
 
 ## TOKEN SETUP
 dotenv.load_dotenv()
@@ -30,8 +30,13 @@ print(TRANSCRIBE)
 
 ## PROMPT FILE SETUP
 # Import prompts file
-fullpath = os.getcwd() + "/prompts.csv"
-promptdf = pd.read_csv(fullpath)
+fullpathPrompts = os.getcwd() + "/prompts.csv"
+promptdf = pd.read_csv(fullpathPrompts)
+
+## REMINDER FILE SETUP
+# It is very important that the csv is truly comma delimited, NOT ; or smth else-delimited. Otherwise it will throw an error and fail to recognise the 'variables'.
+fullpathReminders = os.getcwd() + "/reminders.csv"
+reminderdf = pd.read_csv(fullpathReminders)
 
 ## LOGGER FILE SETUP
 logging.basicConfig(
@@ -151,7 +156,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await initialize_chat_handler(update,context)
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nWisperBot is created to help you connect with others through asynchronous audio-conversations! Wisper is all about sending each other voice messages, listening, and responding. In particular, we want to encourage you to really try to hear what someone is saying: in your conversation, try to reflect back on what the other person said, be respectful in your response, and ask clarifying questions to get to know the other person better!\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nAre you using WisperBot in a group chat? Make sure that you include the bot's name (e.g., Wisper or WisperBot) in your message so the bot knows that you're talking to it and not one of your fellow group members. (:\n\nFor more information about the aim of WisperBot, please use the /help command. Happy Wispering!"
+    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nWisperBot is created to help you connect with others through asynchronous audio-conversations! Wisper is all about sending each other voice messages, listening, and responding.\n\nIn particular, we want to encourage so-called “active listening”, which means that you really try to hear what someone is saying.\n\nSpecifically, in this round of conversations, make sure you include these 2 elements in your audio reponse:\n1) Start your response by paraphrasing what you have heard the other person say. If you’re not sure how to do this, start with “So what I’ve heard you say, is that ...”\n2) Then, make sure to follow up your ‘summary’ with clarifying questions. Ask the other person to explain and elaborate on parts which you would want to know more about.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nAre you using WisperBot in a group chat? Make sure that you include the bot's name (e.g., Wisper or WisperBot) in your message so the bot knows that you're talking to it and not one of your fellow group members. (:\n\nFor more information about the aim of WisperBot, please use the /help command. Happy Wispering!"
     )
     chat.log(f"Sent Start instructions to {chat.name}")
 
@@ -319,27 +324,40 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 What about you, {other_list}?""")
     else:
         await chat.send_msg(f"Thanks for recording, {update.message.from_user.first_name}!")
+    
+    # Check the .env variable on whether audio should be transcribed or not
     if TRANSCRIBE:
         transcript = await transcribe(update,filename)
-    # Have commented this out because I don't want people to he able to read the transcript
-    #await chat.send_msg(text=f"Transcription: {transcript}")
+        # Have commented this out because I don't want people to he able to read the transcript
+        #await chat.send_msg(text=f"Transcription: {transcript}")
     
-    #await context.bot.send_message(
-    #    chat_id=update.effective_chat.id,
-    #    text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
-    #)
-    #await context.bot.send_voice(
-    #    chat_id=update.effective_chat.id,
-    #    voice=vn
-    #)
-    #concat_voicenotes()
+        #await context.bot.send_message(
+        #    chat_id=update.effective_chat.id,
+        #    text=f"Here are the five most recent voicenotes preceding the one you just submitted:"
+        #)
+        #await context.bot.send_voice(
+        #    chat_id=update.effective_chat.id,
+        #    voice=vn
+        #)
+        #concat_voicenotes()
+
+    # SETTINGS OF THE REMINDER TO SEND AUDIO
+    # Set the timer
     for day in range(1,4): # 1-3
+        # Actual time that needs to pass since the last audio came in
         delay = day*24*60*60
-        if day == 1:
-            since = 'yesterday'
-        else:
-            since = f'{day} days ago'
-        chat.job_queue.run_once(send_prompt, delay, data={'update': update, 'Text': f"Would you like to respond to this message from {since}?"})
+        # TESTING THE REMINDER WITH A DELAY OF 10 SEC TO SEE IF THE RANDOM REMINDERS WORK
+        #delay = day*10
+        
+        # Save the time since the last audio message to a text that can potentially be used in a reminder
+        #if day == 1:
+        #    since = 'yesterday'
+        #else:
+        #    since = f'{day} days ago'
+        
+        # Pick a random reminder and set the job
+        randomReminder = random.choice(reminderdf.remindertext[reminderdf.remindertype.eq('sendaudio')].tolist())
+        chat.job_queue.run_once(send_prompt, delay, data={'update': update, 'Text': f"{randomReminder}"})
 
 """  ## IMAGE GENERATING SECTION OF THE GET-VOICE FUNCTION
     ## Return keywords of transcription
