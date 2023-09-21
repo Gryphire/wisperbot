@@ -298,7 +298,8 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Respond as usual without checking if WisperBot's name is called
         text=create_response(chat,usertext)
         await chat.send_msg(text)
-        chat.log(f"Sent response to {name}", group_member='Wisperbot',event='sent response',content=text)
+        msg = f"Sent response to {name}"
+        chat.log(msg, group_member='Wisperbot',event=msg,content=text)
 
 async def transcribe(update: Update,filename):
     chat = await initialize_chat_handler(update)
