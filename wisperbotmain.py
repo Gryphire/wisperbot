@@ -1,6 +1,7 @@
 #!/usr/bin/python
 ## LIBRARIES
 from datetime import datetime
+import csv
 import json
 import glob
 import logging
@@ -27,6 +28,11 @@ if TRANSCRIBE.lower() == 'false':
 else:
     TRANSCRIBE = True
 print(TRANSCRIBE)
+
+## CSV FILE SETUP
+csv_columns = ["datetime", "chat_id", "group_member", "event", "content"]
+csv_file = open(os.getcwd() + "/data.csv", "a", encoding="utf-8")
+csv_writer = csv.writer(csv_file)
 
 ## PROMPT FILE SETUP
 # Import prompts file
@@ -111,10 +117,19 @@ class ChatHandler:
         logger.info(f'Now logging to {log_file}')
         return logger
 
-    def log(self, msg):
+    def log(self, msg, group_member=None, event=None, content=None):
         '''Log a message to the correct log file'''
         self.logger.info(msg)
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+        log_row = [
+                datetime.now(),
+                self.chat_id,
+                group_member,
+                event,
+                content
+        ]
+        csv_writer.writerow(log_row)
+        csv_file.flush()
 
     def add_user(self,user):
         if user.id not in self.user_list:
@@ -249,7 +264,7 @@ def create_response(chat, usertext: str) -> str:
         response = response['choices'][0]["text"] """
 
     if chat.prompt:
-        chat.log(f"{chat.name} chose prompt {chat.prompt}")
+        chat.log(f"{chat.name} prompt is {chat.prompt}", group_member=chat.name, event='chose/retrieved prompt', content=chat.prompt)
 
     return response
 
@@ -262,19 +277,25 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await initialize_chat_handler(update,context)
     usertext: str = update.message.text
     processed_usertext: str = usertext.lower()
+    name: str = update.message.from_user.first_name
+    group_member = name
+    event = 'sent text to Wisper'
+    content = usertext
+    chat.log(f"{group_member} {event}: {usertext}", group_member, event, content)
 
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         # Make sure to only respond when reference is made to WisperBot
         if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
             # Only respond if Wisperbot's name is called in user's message
             await chat.send_msg(text=create_response(chat,usertext))
-            chat.log(f"Sent response to {update.message.from_user.first_name}")
+            chat.log(f"Sent response to {name}")
         else:
             return
     else:
         # Respond as usual without checking if WisperBot's name is called
-        await chat.send_msg(text=create_response(chat,usertext))
-        chat.log(f"Sent response to {update.message.from_user.first_name}")
+        text=create_response(chat,usertext)
+        await chat.send_msg(text)
+        chat.log(f"Sent response to {name}", group_member='Wisperbot',event='sent response',content=text)
 
 async def transcribe(update: Update,filename):
     chat = await initialize_chat_handler(update)
@@ -521,3 +542,4 @@ if __name__ == '__main__':
 
     # Run application and wait for messages to come in
     application.run_polling()
+    csv_file.close()
