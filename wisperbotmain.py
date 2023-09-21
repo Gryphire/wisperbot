@@ -27,7 +27,6 @@ if TRANSCRIBE.lower() == 'false':
     TRANSCRIBE = False
 else:
     TRANSCRIBE = True
-print(TRANSCRIBE)
 
 ## CSV FILE SETUP
 csv_columns = ["datetime", "chat_id", "group_member", "event", "content"]
