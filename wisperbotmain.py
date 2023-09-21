@@ -181,8 +181,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
     chat = await initialize_chat_handler(update,context)
-    await chat.send_msg(text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions.")
-    chat.log(f"Sent help info to {update.message.from_user.first_name}")
+    text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions."
+    await chat.send_msg(text)
+    msg = f"Sent help info to {update.message.from_user.first_name}"
+    chat.log(msg, group_member='Wisperbot', event=msg)
 
 # BOT's RESPONSE TO /PROMPT
 async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
