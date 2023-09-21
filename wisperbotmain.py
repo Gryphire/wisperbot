@@ -121,6 +121,8 @@ class ChatHandler:
         '''Log a message to the correct log file'''
         self.logger.info(msg)
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+        if event is None:
+            event = msg
         log_row = [
                 datetime.now(),
                 self.chat_id,
@@ -173,7 +175,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # the bot will reply with the following reply text
     await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nWisperBot is created to help you connect with others through asynchronous audio-conversations! Wisper is all about sending each other voice messages, listening, and responding.\n\nIn particular, we want to encourage so-called “active listening”, which means that you really try to hear what someone is saying.\n\nSpecifically, in this round of conversations, make sure you include these 2 elements in your audio reponse:\n1) Start your response by paraphrasing what you have heard the other person say. If you’re not sure how to do this, start with “So what I’ve heard you say, is that ...”\n2) Then, make sure to follow up your ‘summary’ with clarifying questions. Ask the other person to explain and elaborate on parts which you would want to know more about.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nAre you using WisperBot in a group chat? Make sure that you include the bot's name (e.g., Wisper or WisperBot) in your message so the bot knows that you're talking to it and not one of your fellow group members. (:\n\nFor more information about the aim of WisperBot, please use the /help command. Happy Wispering!"
     )
-    chat.log(f"Sent Start instructions to {chat.name}")
+    chat.log(f"Sent Start instructions to {chat.name}",group_member='Wisperbot')
 
 # BOT'S RESPONSE TO /HELP
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
