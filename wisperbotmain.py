@@ -187,6 +187,8 @@ def create_response(chat, usertext: str) -> str:
     # Python is difficult about case, so we want to make sure it's all equalized to lowercase 
     # (which is what we're defining it to look out for) before it hits processing
     processed_usertext: str = usertext.lower()
+    if chat.prompt:
+        original_prompt = chat.prompt
 
     # Check if user is greeting the bot, if so respond with a greeting too
     if 'hello' in processed_usertext or 'hi' in processed_usertext or 'hey' in processed_usertext:
@@ -248,7 +250,7 @@ def create_response(chat, usertext: str) -> str:
         )
         response = response['choices'][0]["text"] """
 
-    if chat.prompt:
+    if chat.prompt != original_prompt:
         chat.log(f"{chat.name} chose prompt {chat.prompt}")
 
     return response
