@@ -184,7 +184,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions."
     await chat.send_msg(text)
     msg = f"Sent help info to {update.message.from_user.first_name}"
-    chat.log(msg, group_member='Wisperbot', event=msg)
+    chat.log(msg, group_member='Wisperbot', event=msg, content=text)
 
 # BOT's RESPONSE TO /PROMPT
 async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -194,7 +194,8 @@ async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await chat.send_msg(text=f"Yay! Happy to hear you'd like to receive a prompt to get going, {update.message.from_user.first_name}!\n\nWhat sort of prompt would you like to receive? Something about...",
         reply_markup = markup
     )
-    chat.log(f"Sent new prompt to {update.message.from_user.first_name}")
+    msg = f"Sent new prompt to {update.message.from_user.first_name}"
+    chat.log(msg, group_member='Wisperbot', event=msg)
 
 ## MESSAGES
 # COMPILING RESPONSE TO USER MESSAGE
@@ -285,7 +286,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name: str = update.message.from_user.first_name
     group_member = name
     # Currently using just "sent text" instead of requested "sent text to Wisper" since it could be to anyone in a group
-    event = 'sent text'
+    event = 'Sent text'
     content = usertext
     chat.log(f"{group_member} {event}: {usertext}", group_member, event, content)
 
@@ -293,8 +294,10 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Make sure to only respond when reference is made to WisperBot
         if 'wisper' in processed_usertext or 'wisperbot' in processed_usertext:
             # Only respond if Wisperbot's name is called in user's message
-            await chat.send_msg(text=create_response(chat,usertext))
-            chat.log(f"Sent response to {name}")
+            text=create_response(chat,usertext)
+            await chat.send_msg(text)
+            msg = f"Sent response to {name}"
+            chat.log(msg,group_member='Wisperbot',event=msg,content=text)
         else:
             return
     else:
@@ -302,7 +305,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=create_response(chat,usertext)
         await chat.send_msg(text)
         msg = f"Sent response to {name}"
-        chat.log(msg, group_member='Wisperbot',event=msg,content=text)
+        chat.log(msg,group_member='Wisperbot',event=msg,content=text)
 
 async def transcribe(update: Update,filename):
     chat = await initialize_chat_handler(update)
@@ -317,7 +320,8 @@ async def transcribe(update: Update,filename):
     transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
     with open(txt,"w",encoding="utf-8") as f:
         f.write(transcript)
-    chat.log(f"Transcribed {filename} to {filename}.txt")
+    msg = f"Transcribed {filename} to {filename}.txt"
+    chat.log(msg,group_member='Wisperbot',event=msg,content=filename)
     os.remove('temp.webm')
     return transcript
 
@@ -330,10 +334,11 @@ async def send_prompt(context, update=None, Text=None):
     chat = await initialize_chat_handler(update,context)
     Text = context.job.data['Text']
     if chat.last_audio == update.effective_message.message_id:
-        chat.log(f'Sending reminder: {Text}')
+        msg = f'Sending reminder: {Text}'
+        chat.log(msg,group_member='Wisperbot',event=msg,content=Text)
         await chat.send_msg(Text)
     else:
-        chat.log(f'New audio so no reminder needed')
+        chat.log(f'New audio received so no reminder needed')
 
 async def get_voice(update: Update, context: CallbackContext) -> None:
     '''Save any voicenotes sent to the bot, and send back the last 5'''
@@ -352,7 +357,8 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     dest_dir = chat.directory
     filename = f"{dest_dir}/{ts}-{update.message.from_user.first_name}-{new_file.file_unique_id}.ogg"
     await new_file.download_to_drive(filename)
-    chat.log(f"Downloaded voicenote as {filename}")
+    msg = f"Downloaded voicenote as {filename}"
+    chat.log(msg,group_member='Wisperbot',event='Downloaded voicenote',content=filename)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     time.sleep(2) # stupid but otherwise it looks like it responds before it gets your message
     other_users = [name for uid, name in chat.user_list.items() if uid != update.effective_user.id]
@@ -482,7 +488,8 @@ Please listen to this latest voicenote, which was sent by {name}, and respond wi
         chat_id=update.effective_chat.id,
         voice=vn
     )
-    chat.log(f"Sent {vn} to {update.message.from_user.first_name}")
+    msg = f"Sent {vn} to {update.message.from_user.first_name}"
+    chat.log(msg, group_member='Wisperbot', event=msg, content=vn)
 
 
 async def latestprompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -491,10 +498,11 @@ async def latestprompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if prompt:
         await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Sure, I'm happy to refresh your memory!\n\nYour latest prompt was: {prompt}")
-        chat.log(f"Sent last prompt ({prompt}) to {update.message.from_user.first_name}")
+        msg = f"Sent last prompt ({prompt}) to {update.message.from_user.first_name}"
     else:
         await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! You have not yet specified a prompt. Please run /prompt to see the options :)")
-        chat.log(f"{update.message.from_user.first_name} asked for the last prompt but had not yet specified one we recognized")
+        msg = f"{update.message.from_user.first_name} asked for the last prompt but had not yet specified one we recognized"
+    chat.log(msg, group_member='Wisperbot', event=msg)
 
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
@@ -509,8 +517,11 @@ async def initialize_chat_handler(update,context=None):
 async def on_user_join(update,context):
     chat = await initialize_chat_handler(update,context)
     for i in update.message.new_chat_members:
-        chat.add_user(i)
-    chat.log(f"User(s) joined. Updated user list: {chat.user_list}")
+        user = chat.add_user(i)
+        msg = f'{user} joined'
+        chat.log(msg,group_member=user,event=msg)
+    msg = f"User(s) joined. Updated user list: {chat.user_list}"
+    chat.log(msg, group_member='Wisperbot', event=msg)
 
 async def on_user_leave(update,context):
     chat = await initialize_chat_handler(update,context)
@@ -519,8 +530,10 @@ async def on_user_leave(update,context):
     try:
         del chat.user_list[user_id]
     except KeyError:
-        chat.log(f"A user who wasn't in the user_list left: {user_id} {user_name}")
-    chat.log(f"User left. Updated user list: {chat.user_list}")
+        msg = f"A user who wasn't in the user_list left: {user_id} {user_name}"
+        chat.log(msg, group_member=user_name, event='Left chat')
+    msg = f"User left. Updated user list: {chat.user_list}"
+    chat.log(msg, group_member=user_name, event='Left chat')
 
 ## COMPILE ALL FUNCTIONS INTO APP
 if __name__ == '__main__':
