@@ -284,7 +284,8 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     processed_usertext: str = usertext.lower()
     name: str = update.message.from_user.first_name
     group_member = name
-    event = 'sent text to Wisper'
+    # Currently using just "sent text" instead of requested "sent text to Wisper" since it could be to anyone in a group
+    event = 'sent text'
     content = usertext
     chat.log(f"{group_member} {event}: {usertext}", group_member, event, content)
 
