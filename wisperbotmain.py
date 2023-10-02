@@ -170,11 +170,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Start a session when the bot receives /start'''
     # Activate
     chat = await initialize_chat_handler(update,context)
+    Text = f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nWisperBot is created to help you connect with others through asynchronous audio-conversations! Wisper is all about sending each other voice messages, listening, and responding.\n\nIn particular, we want to encourage so-called “active listening”, which means that you really try to hear what someone is saying.\n\nSpecifically, in this round of conversations, make sure you include these 2 elements in your audio reponse:\n1) Start your response by paraphrasing what you have heard the other person say. If you’re not sure how to do this, start with “So what I’ve heard you say, is that ...”\n2) Then, make sure to follow up your ‘summary’ with clarifying questions. Ask the other person to explain and elaborate on parts which you would want to know more about.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nAre you using WisperBot in a group chat? Make sure that you include the bot's name (e.g., Wisper or WisperBot) in your message so the bot knows that you're talking to it and not one of your fellow group members. (:\n\nFor more information about the aim of WisperBot, please use the /help command. Happy Wispering!"
     # When the user presses 'start' to start a conversation with the bot, then...
     # the bot will reply with the following reply text
-    await chat.send_msg(text=f"Hi {update.message.from_user.first_name}! Welcome to WisperBot.\n\nWisperBot is created to help you connect with others through asynchronous audio-conversations! Wisper is all about sending each other voice messages, listening, and responding.\n\nIn particular, we want to encourage so-called “active listening”, which means that you really try to hear what someone is saying.\n\nSpecifically, in this round of conversations, make sure you include these 2 elements in your audio reponse:\n1) Start your response by paraphrasing what you have heard the other person say. If you’re not sure how to do this, start with “So what I’ve heard you say, is that ...”\n2) Then, make sure to follow up your ‘summary’ with clarifying questions. Ask the other person to explain and elaborate on parts which you would want to know more about.\n\nIf you want to start a new Wisper journey, please use the /prompt command to receive a new prompt and start sending each other voice notes around the prompt!\n\nIf you don't remember where you left off in the conversation, use the /latestprompt command to refresh your memory of which prompt you are using. You can also use the /latestaudio command to be able to listen to the last Wisper that was sent to you, so that you can get back into the conversation!\n\nAre you using WisperBot in a group chat? Make sure that you include the bot's name (e.g., Wisper or WisperBot) in your message so the bot knows that you're talking to it and not one of your fellow group members. (:\n\nFor more information about the aim of WisperBot, please use the /help command. Happy Wispering!"
-    )
-    chat.log(f"Sent Start instructions to {chat.name}",group_member='Wisperbot')
+    await chat.send_msg(text=Text)
+    chat.log(f"{chat.name} requested /start info",group_member='Wisperbot',content = Text.strip())
 
 # BOT'S RESPONSE TO /HELP
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,8 +183,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await initialize_chat_handler(update,context)
     text=f"I'm happy to tell you some more about WisperBot!\n\nWisperBot is a product of the Games for Emotional and Mental Health Lab, and has been created to facilitate asynchronous audio conversations between you and others around topics that matter to you.\n\nThrough the prompts that WisperBot provides, the bot's purpose is to help you connect with others in a meaningful way.\n\nNot sure how to get started? Use the /start command to review the instructions."
     await chat.send_msg(text)
-    msg = f"Sent help info to {update.message.from_user.first_name}"
-    chat.log(msg, group_member='Wisperbot', event=msg, content=text)
+    msg = f"{update.message.from_user.first_name} requested /help info"
+    chat.log(msg, group_member='Wisperbot', event=msg, content=text.strip())
 
 # BOT's RESPONSE TO /PROMPT
 async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -194,7 +194,7 @@ async def prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await chat.send_msg(text=f"Yay! Happy to hear you'd like to receive a prompt to get going, {update.message.from_user.first_name}!\n\nWhat sort of prompt would you like to receive? Something about...",
         reply_markup = markup
     )
-    msg = f"Sent new prompt to {update.message.from_user.first_name}"
+    msg = f"{update.message.from_user.first_name} requested new /prompt"
     chat.log(msg, group_member='Wisperbot', event=msg)
 
 ## MESSAGES
@@ -270,7 +270,7 @@ def create_response(chat, usertext: str) -> str:
         response = response['choices'][0]["text"] """
 
     if chat.prompt != original_prompt:
-        chat.log(f"{chat.name} prompt is {chat.prompt}", group_member=chat.name, event='chose/retrieved prompt', content=chat.prompt)
+        chat.log(f"{chat.name} prompt is {chat.prompt}", group_member=chat.name, event='chose/retrieved prompt', content=chat.prompt.strip())
 
     return response
 
@@ -288,7 +288,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Currently using just "sent text" instead of requested "sent text to Wisper" since it could be to anyone in a group
     event = 'Sent text'
     content = usertext
-    chat.log(f"{group_member} {event}: {usertext}", group_member, event, content)
+    chat.log(f"{group_member} {event}: {usertext}", group_member, event, content.strip())
 
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         # Make sure to only respond when reference is made to WisperBot
@@ -297,7 +297,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=create_response(chat,usertext)
             await chat.send_msg(text)
             msg = f"Sent response to {name}"
-            chat.log(msg,group_member='Wisperbot',event=msg,content=text)
+            chat.log(msg,group_member='Wisperbot',event=msg,content=text.strip())
         else:
             return
     else:
@@ -305,7 +305,7 @@ async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=create_response(chat,usertext)
         await chat.send_msg(text)
         msg = f"Sent response to {name}"
-        chat.log(msg,group_member='Wisperbot',event=msg,content=text)
+        chat.log(msg,group_member='Wisperbot',event=msg,content=text.strip())
 
 async def transcribe(update: Update,filename):
     chat = await initialize_chat_handler(update)
@@ -335,7 +335,7 @@ async def send_prompt(context, update=None, Text=None):
     Text = context.job.data['Text']
     if chat.last_audio == update.effective_message.message_id:
         msg = f'Sending reminder: {Text}'
-        chat.log(msg,group_member='Wisperbot',event=msg,content=Text)
+        chat.log(msg,group_member='Wisperbot',event=msg,content=Text.strip())
         await chat.send_msg(Text)
     else:
         chat.log(f'New audio received so no reminder needed')
