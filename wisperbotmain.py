@@ -30,8 +30,6 @@ else:
 
 ## CSV FILE SETUP
 csv_columns = ["datetime", "chat_id", "group_member", "event", "content"]
-csv_file = open(os.getcwd() + "/data.csv", "a", encoding="utf-8")
-csv_writer = csv.writer(csv_file)
 
 ## PROMPT FILE SETUP
 # Import prompts file
@@ -106,6 +104,8 @@ class ChatHandler:
 
     def get_logger(self):
         log_file = f'{self.directory}/chat_{self.chat_id}'
+        self.csv_file = open(log_file + ".csv", "a", encoding="utf-8")
+        self.csv_writer = csv.writer(self.csv_file)
         formatting = formatting = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler = logging.FileHandler(log_file)
@@ -129,8 +129,8 @@ class ChatHandler:
                 event,
                 content
         ]
-        csv_writer.writerow(log_row)
-        csv_file.flush()
+        self.csv_writer.writerow(log_row)
+        self.csv_file.flush()
 
     def add_user(self,user):
         if user.id not in self.user_list:
@@ -562,4 +562,3 @@ if __name__ == '__main__':
 
     # Run application and wait for messages to come in
     application.run_polling()
-    csv_file.close()
