@@ -206,6 +206,7 @@ def create_response(chat, usertext: str) -> str:
     # Python is difficult about case, so we want to make sure it's all equalized to lowercase 
     # (which is what we're defining it to look out for) before it hits processing
     processed_usertext: str = usertext.lower()
+    original_prompt = ""
     if chat.prompt:
         original_prompt = chat.prompt
 
