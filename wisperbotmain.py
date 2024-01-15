@@ -271,7 +271,10 @@ def create_response(chat, usertext: str) -> str:
         response = response['choices'][0]["text"] """
 
     if chat.prompt != original_prompt:
-        chat.log(f"{chat.name} prompt is {chat.prompt}", group_member=chat.name, event='chose/retrieved prompt', content=chat.prompt.strip())
+        prompt = chat.prompt
+        if prompt:
+            prompt = prompt.strip()
+        chat.log(f"{chat.name} prompt is {chat.prompt}", group_member=chat.name, event='chose/retrieved prompt', content=prompt)
 
     return response
 
