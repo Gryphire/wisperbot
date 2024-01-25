@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import os
+import asyncio
 import json
 import logging
 import random
@@ -188,7 +189,12 @@ Please run /??? to enter the main experience!""")
             if not r:
                 await self.send_msg(f"Here's a message for you to listen to:")
                 await self.send_vn(vn)
-                await self.send_msg(f"So, __what's the rub__? Which driving forces underlie the storyteller's experience?")
+                await self.send_msg(f"""So, having listened to this person's story,__what do you think is the rub__? 
+                                    Which driving forces underlie the storyteller's experience?\n\n 
+                                    When you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\n
+                                    Remember to reflect on the story's embedded values but through active listening: by paraphrasing and asking clarifying questions.\n\n
+                                    Record whenever you're ready!\n\n
+                                    P.S. You will only be able to request another tutorial story when you have responded to this one first.""")
                 all_sent = False
                 break
             else:
@@ -232,7 +238,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Given a message, echo it back with their name'''
     chat = await initialize_chat_handler(update,context)
     chat.log(f'{update.message.text}')
-    await chat.send_msg(f'Hi {chat.first_name}! Please run /start for instructions. 😊')
+    await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /start for further instructions. 😊""")
 
 async def get_voice(update: Update, context: CallbackContext) -> None:
     chat = await initialize_chat_handler(update,context)
@@ -244,7 +250,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{new_file.file_unique_id}.ogg"
     await new_file.download_to_drive(filename)
     chat.log(f"Downloaded voicenote as {filename}")
-    await chat.send_msg(f"Thank you for recording, {chat.first_name}!")
+    await chat.send_msg(f"Thank you for recording your response, {chat.first_name}!")
     transcript = await chat.transcribe(filename)
     # Uncomment the following if you want people to receive their transcripts:
     #chunks = await chunk_msg(f"Transcription:\n\n{transcript}")
@@ -262,10 +268,8 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 
 async def send_intro(update,context):
     chat = await initialize_chat_handler(update,context)
-    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first interaction prompt')
-    await chat.send_msg("""Hello! And welcome to an audio reflection experiment, brought to you by GEMH 🌺
-
-Please run /request to receive the audio for a value tension""")
+    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first practice audio')
+    await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /request to receive a practice story to start with.""")
 
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
