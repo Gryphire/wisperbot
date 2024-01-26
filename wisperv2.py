@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+## LIBRARIES TO BE IMPORTED
 import os
 import asyncio
 import json
@@ -15,24 +16,21 @@ from telegram.error import TimedOut
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
   CommandHandler, ContextTypes, CallbackContext, ConversationHandler)
 
+# MAKE SURE API KEYS ARE USED FROM .ENV FILE
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 openai.api_key = os.environ.get("OPENAI_API_KEY")
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 
 ## Set up for conversation handler
 GET_PARTICIPANT_NUMBER = 0
 DB = "wisper.db"
 #CONFIRM_PARTICIPANT_NUMBER = 1
 
-## LOGGER FILE SETUP
+# SET UP LOGGING
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO)
-
+    level=logging.INFO
+)
 class HTTPXFilter(logging.Filter):
     '''Filter out lines starting with HTTP'''
     def filter(self, record):
@@ -49,9 +47,11 @@ top_level_logger.propagate = False
 
 # Save logger to object that we can call in future to save events to
 logging.getLogger("httpx").addFilter(HTTPXFilter())
+
 # Keep a dictionary of loggers:
 chat_handlers = {}
 
+# CHECK FOR FOLDER TO KEEP TRACK OF WHICH TUTORIAL STORIES HAVE BEEN SENT TO USER ALREADY
 try:
     os.makedirs('sent')
 except FileExistsError:
@@ -116,8 +116,28 @@ class ChatHandler:
         self.logger.info(msg)
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
 
+    async def choose_random_tutstory(self):
+        self.log(f'Sending random tutorial story to {self.name}')
+        exclude = str(self.chat_id)
+        ogg_files = [f for f in os.listdir() if f.startswith('tutstory')]
+        #Uncomment this so we don't send people's voicenotes back to them:
+        ogg_files = [f for f in ogg_files if f not in self.sent and exclude not in f]
+        try:
+            random_file = random.choice(ogg_files)
+            self.sent.append(random_file)
+            self.save_sent_files()
+            self.log(f'Selected random voicenote: {random_file}')
+            return random_file
+        except IndexError:
+            await self.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
+            #INSTRUCTIONS USEFUL FOR LATER "To request a prompt and record your own story, use the /requestprompt command. To listen to another person's story, use the /request command."
+            self.log(f'No other voicenotes to choose from. Tutorial completed.')
+            #Need to add a 'tutorialcompleted' variable here that switches to 1 when the user has gone through this, 
+            #so we know not to send them any tutorial related stuff anymore (and not to use any tutorial functions).
+            return None
+
     async def choose_random_vn(self):
-        self.log(f'Sending random voicenote to {self.name}')
+        self.log(f'Sending random personal story to {self.name}')
         exclude = str(self.chat_id)
         ogg_files = [f for f in os.listdir() if f.endswith('.ogg')]
         #Uncomment this so we don't send people's voicenotes back to them:
@@ -165,12 +185,12 @@ Please run /??? to enter the main experience!""")
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
 
-    async def send_random_vn(self):
-        random_vn = await self.choose_random_vn()
+    async def send_random_tutstory(self):
+        random_vn = await self.choose_random_tutstory()
         if random_vn:
-            await self.send_msg(f"Here's a response from another participant:")
+            await self.send_msg(f"Here's a tutorial story from another participant:")
             await self.send_vn(random_vn)
-            await self.send_msg("Listen to another by typing /request")
+            await self.send_msg("Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!")
 
     async def sqlquery(self,cmd,fetchall=False):
         c.execute(cmd)
@@ -180,27 +200,22 @@ Please run /??? to enter the main experience!""")
             result = c.fetchone()
         return result
 
-    async def send_intro_vn(self):
+    async def send_intro_tutstory(self):
         # Check what voice notes have been sent
         all_sent = True
         for i in range(1,5):
-            vn = f'value{i}.ogg'
+            vn = f'tutstory{i}.ogg'
             r = await self.sqlquery(f'SELECT * FROM logs WHERE filename="{vn}"')
             if not r:
-                await self.send_msg(f"Here's a message for you to listen to:")
+                await self.send_msg(f"Here's a tutorial story for you to listen to:")
                 await self.send_vn(vn)
-                await self.send_msg(f"""So, having listened to this person's story,__what do you think is the rub__? 
-                                    Which driving forces underlie the storyteller's experience?\n\n 
-                                    When you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\n
-                                    Remember to reflect on the story's embedded values but through active listening: by paraphrasing and asking clarifying questions.\n\n
-                                    Record whenever you're ready!\n\n
-                                    P.S. You will only be able to request another tutorial story when you have responded to this one first.""")
+                await self.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
                 all_sent = False
                 break
             else:
                 continue
         if all_sent:
-            await self.send_msg(f"Well done! You have now listened to all of the responses. Please run /??? to enter the main sequence")
+            await self.send_msg(f"Great to see you're hungry for some more stories! You've already listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!")
 
     async def transcribe(self,filename):
         txt = f"{filename}.txt"
@@ -259,7 +274,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
     #        chat_id=update.effective_chat.id,
     #        text=chunk
     #    )
-    await chat.send_random_vn()
+    await chat.send_random_tutstory()
 
 #def save_start_time(start_time, part_id):
 #    ''' Save start time in seconds to start_time.txt file '''
@@ -269,7 +284,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 async def send_intro(update,context):
     chat = await initialize_chat_handler(update,context)
     chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first practice audio')
-    await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /request to receive a practice story to start with.""")
+    await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
 
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
@@ -279,12 +294,12 @@ async def initialize_chat_handler(update,context=None):
     chat = chat_handlers[chat_id]
     return chat
 
-async def request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def gettutorialstory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
-    chat.log('Received /request command')
+    chat.log('Received /gettutorialstory command')
     # Need to send back in order so will need to track what has been sent to the user
-    await chat.send_intro_vn()
+    await chat.send_intro_tutstory()
 
 async def help_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /help, start logging, say hi, and send voicenote back if it's a DM'''
@@ -322,13 +337,13 @@ if __name__ == '__main__':
 
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     help_handler = CommandHandler('help', help_msg)
-    request_handler = CommandHandler('request', request)
+    gettutorialstory_handler = CommandHandler('gettutorialstory', gettutorialstory)
     voice_handler = MessageHandler(filters.VOICE , get_voice)
     start_handler = CommandHandler('start', start)
 
     application.add_handler(echo_handler)
     application.add_handler(help_handler)
-    application.add_handler(request_handler)
+    application.add_handler(gettutorialstory_handler)
     application.add_handler(voice_handler)
     application.add_handler(start_handler)
 
