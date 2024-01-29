@@ -63,6 +63,7 @@ class ChatHandler:
         self.chat_type = update.message.chat.type
         self.context = context
         self.sent = []
+        self.tutorial_complete = False
         if self.chat_type == 'private':
             self.name = update.message.from_user.full_name
             try:
@@ -185,6 +186,18 @@ Please run /??? to enter the main experience!""")
             result = c.fetchone()
         return result
 
+    async def send_intro_tutorial(self):
+        self.log(f'Chat {self.chat_id} from {self.name}: Sending first instructions')
+        await self.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
+
+    async def send_intro(self):
+        self.log(f'Chat {self.chat_id} from {self.name}: Sending second instructions')
+        await self.send_msg("""Entering main sequence...""")
+
+    async def send_endtutorial(self):
+        self.log(f'Chat {self.chat_id} from {self.name}: Completed tutorial')
+        await self.send_msg("""Amazing, thanks for completing the tutorial!""")
+
     async def send_intro_tutstory(self):
         # Check what voice notes have been sent
         all_sent = True
@@ -266,11 +279,6 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 #    with open(f'{part_id}/start_time.txt','w') as f:
 #        f.write(f'{start_time}')
 
-async def send_intro(update,context):
-    chat = await initialize_chat_handler(update,context)
-    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first instructions')
-    await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
-
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
     if chat_id not in chat_handlers:
@@ -286,6 +294,14 @@ async def gettutorialstory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Need to send back in order so will need to track what has been sent to the user
     await chat.send_intro_tutstory()
 
+async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    '''When we receive /endtutorial, start main sequence'''
+    chat = await initialize_chat_handler(update,context)
+    chat.tutorial_complete = True
+    chat.log('Received /endtutorial command')
+    # Need to send back in order so will need to track what has been sent to the user
+    await chat.send_endtutorial()
+
 async def help_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /help, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
@@ -298,14 +314,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat.log('Received /start command')
     bot = context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
-        admins = await bot.get_chat_administrators(chat.chat_id)
-        bot_admin = any(admin.user.id == bot.id for admin in admins)
-        if bot_admin:
-            await send_intro(update, context)
-        else:
-            await chat.send_msg("Please make me an admin of this group so that I can assist you 🥰")
+        await chat.send_msg("This bot is intended for individual chats only 🥰")
     else:
-        await send_intro(update, context)
+        if chat.tutorial_complete:
+            await chat.send_intro()
+        else:
+            await chat.send_intro_tutorial()
     #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
     #subprocess.check_output(cmd, shell=True)
 
@@ -323,12 +337,14 @@ if __name__ == '__main__':
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     help_handler = CommandHandler('help', help_msg)
     gettutorialstory_handler = CommandHandler('gettutorialstory', gettutorialstory)
+    endtutorial_handler = CommandHandler('endtutorial', endtutorial)
     voice_handler = MessageHandler(filters.VOICE , get_voice)
     start_handler = CommandHandler('start', start)
 
     application.add_handler(echo_handler)
     application.add_handler(help_handler)
     application.add_handler(gettutorialstory_handler)
+    application.add_handler(endtutorial_handler)
     application.add_handler(voice_handler)
     application.add_handler(start_handler)
 
