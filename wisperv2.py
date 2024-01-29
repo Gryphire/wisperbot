@@ -268,7 +268,7 @@ async def get_voice(update: Update, context: CallbackContext) -> None:
 
 async def send_intro(update,context):
     chat = await initialize_chat_handler(update,context)
-    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first practice audio')
+    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first instructions')
     await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
 
 async def initialize_chat_handler(update,context=None):
