@@ -65,7 +65,10 @@ class ChatHandler:
         self.sent = []
         if self.chat_type == 'private':
             self.name = update.message.from_user.full_name
-            self.first_name = update.message.from_user.first_name
+            try:
+                self.first_name = update.message.from_user.first_name
+            except AttributeError:
+                self.first_name = self.name
         elif 'group' in self. chat_type: # To inlude both group and supergroup
             self.name = update.message.chat.title
         try:
