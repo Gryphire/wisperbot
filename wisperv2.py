@@ -74,7 +74,6 @@ class ChatHandler:
         except FileNotFoundError:
             self.number = None
         self.logger = self.get_logger()
-        self.load_sent_files()
 
     @property
     def directory(self):
@@ -84,20 +83,6 @@ class ChatHandler:
         except FileExistsError:
             pass
         return part
-
-    def load_sent_files(self):
-        filename = f'sent/{self.chat_id}.json'
-        try:
-            with open(filename) as f:
-                self.sent = json.load(f)
-            self.log('Successfully loaded list of sent files')
-        except (FileNotFoundError, json.decoder.JSONDecodeError):
-            self.sent = []
-
-    def save_sent_files(self):
-        filename = f"sent/{self.chat_id}.json"
-        with open(filename, 'w') as f:
-            json.dump(self.sent, f)
 
     def get_logger(self):
         log_file = f'{self.directory}/chat_{self.chat_id}'
@@ -125,7 +110,6 @@ class ChatHandler:
         try:
             random_file = random.choice(ogg_files)
             self.sent.append(random_file)
-            self.save_sent_files()
             self.log(f'Selected random voicenote: {random_file}')
             return random_file
         except IndexError:
@@ -145,7 +129,6 @@ class ChatHandler:
         try:
             random_file = random.choice(ogg_files)
             self.sent.append(random_file)
-            self.save_sent_files()
             self.log(f'Selected random voicenote: {random_file}')
             return random_file
         except IndexError:
@@ -181,7 +164,6 @@ Please run /??? to enter the main experience!""")
                    VN))
         conn.commit()
         self.sent.append(VN)
-        self.save_sent_files()
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
 
