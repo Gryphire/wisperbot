@@ -189,8 +189,8 @@ Please run /??? to enter the main experience!""")
         # Check what voice notes have been sent
         all_sent = True
         for i in range(1,5):
-            vn = f'tutstory{i}.ogg'
-            r = await self.sqlquery(f'SELECT * FROM logs WHERE filename="{vn}"')
+            vn = f'tutorialstories/tutstory{i}.ogg'
+            r = await self.sqlquery(f'SELECT * FROM logs WHERE filename="{vn}" AND chat_id="{self.chat_id}"')
             if not r:
                 await self.send_msg(f"Here's a tutorial story for you to listen to:")
                 await self.send_vn(vn)
