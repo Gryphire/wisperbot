@@ -106,14 +106,14 @@ class ChatHandler:
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
 
     async def choose_random_tutstory(self):
-        self.log(f'Sending random tutorial story to {self.name}')
         exclude = str(self.chat_id)
-        ogg_files = [f for f in os.listdir() if f.startswith('tutstory')]
+        tutorial_files = [f for f in os.listdir('tutorialstories/') if f.startswith('tutstory')]
         #Uncomment this so we don't send people's voicenotes back to them:
-        ogg_files = [f for f in ogg_files if f not in self.sent and exclude not in f]
-        try:
-            random_file = random.choice(ogg_files)
+        tutorial_files = [f for f in tutorial_files if f not in self.sent and exclude not in f]
+        try: 
+            random_file = random.choice(tutorial_files)
             self.sent.append(random_file)
+            self.log(f'Sending tutorial story to {self.name}')
             self.log(f'Selected random voicenote: {random_file}')
             return random_file
         except IndexError:
@@ -125,20 +125,18 @@ class ChatHandler:
             return None
 
     async def choose_random_vn(self):
-        self.log(f'Sending random personal story to {self.name}')
         exclude = str(self.chat_id)
         ogg_files = [f for f in os.listdir() if f.endswith('.ogg')]
         #Uncomment this so we don't send people's voicenotes back to them:
         ogg_files = [f for f in ogg_files if f not in self.sent and exclude not in f]
         try:
+            self.log(f'Sending random personal story to {self.name}')
             random_file = random.choice(ogg_files)
             self.sent.append(random_file)
             self.log(f'Selected random voicenote: {random_file}')
             return random_file
         except IndexError:
-            await self.send_msg("""Exciting! You've listened to all the reflections I've got for you so far.
-
-Please run /??? to enter the main experience!""")
+            await self.send_msg("""Exciting! You've listened to all the reflections I've got for you so far. Please run /??? to enter the main experience!""")
             self.log(f'No suitable voicenotes to choose from.')
             return None
 
@@ -173,9 +171,10 @@ Please run /??? to enter the main experience!""")
 
     async def send_random_tutstory(self):
         random_vn = await self.choose_random_tutstory()
+        vn_fullpath = f'tutorialstories/{random_vn}'
         if random_vn:
             await self.send_msg(f"Here's a tutorial story from another participant:")
-            await self.send_vn(random_vn)
+            await self.send_vn(vn_fullpath)
             await self.send_msg("Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!")
 
     async def sqlquery(self,cmd,fetchall=False):
@@ -252,13 +251,13 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await initialize_chat_handler(update,context)
     bot = chat.context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
-        await chat.send_msg("This bot is intended for individual chats only 🥰 Bye for now")
+        await chat.send_msg("This bot is intended for individual chats only. 🥰 Bye for now")
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
     chat.log(f'{update.message.text}')
     await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /start for further instructions. 😊""")
 
-async def get_voice(update: Update, context: CallbackContext) -> None:
+async def get_response(update: Update, context: CallbackContext) -> None:
     chat = await initialize_chat_handler(update,context)
     part = chat.directory
     # get basic info about the voice note file and prepare it for downloading
@@ -344,14 +343,14 @@ if __name__ == '__main__':
     help_handler = CommandHandler('help', help_msg)
     gettutorialstory_handler = CommandHandler('gettutorialstory', gettutorialstory)
     endtutorial_handler = CommandHandler('endtutorial', endtutorial)
-    voice_handler = MessageHandler(filters.VOICE , get_voice)
+    response_handler = MessageHandler(filters.VOICE , get_response)
     start_handler = CommandHandler('start', start)
 
     application.add_handler(echo_handler)
     application.add_handler(help_handler)
     application.add_handler(gettutorialstory_handler)
     application.add_handler(endtutorial_handler)
-    application.add_handler(voice_handler)
+    application.add_handler(response_handler)
     application.add_handler(start_handler)
 
     application.run_polling()
