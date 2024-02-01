@@ -45,17 +45,14 @@ top_level_logger.addHandler(top_level_handler)
 top_level_logger.addFilter(HTTPXFilter())
 top_level_logger.propagate = False
 
-# Save logger to object that we can call in future to save events to
+# save logger to object that we can call in future to save events to
 logging.getLogger("httpx").addFilter(HTTPXFilter())
 
 # Keep a dictionary of loggers:
 chat_handlers = {}
 
 # CHECK FOR FOLDER TO KEEP TRACK OF WHICH TUTORIAL STORIES HAVE BEEN SENT TO USER ALREADY
-try:
-    os.makedirs('sent')
-except FileExistsError:
-    pass
+os.makedirs('sent', exist_ok=True)
 
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
@@ -63,7 +60,10 @@ class ChatHandler:
         self.chat_type = update.message.chat.type
         self.context = context
         self.sent = []
+        # When chat first starts, the user will be in tutorial mode
         self.tutorial_complete = False
+        # Initial voicenotes will be saved under "tutorialresponses"
+        self.subdir = 'tutorialresponses'
         if self.chat_type == 'private':
             self.name = update.message.from_user.full_name
             try:
@@ -82,10 +82,7 @@ class ChatHandler:
     @property
     def directory(self):
         part = f'{self.chat_type}/{self.name}'
-        try:
-            os.makedirs(f'{part}')
-        except FileExistsError:
-            pass
+        os.makedirs(f'{part}', exist_ok=True)
         return part
 
     def get_logger(self):
@@ -260,16 +257,21 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_response(update: Update, context: CallbackContext) -> None:
     chat = await initialize_chat_handler(update,context)
-    part = chat.directory
+    path = os.path.join(chat.directory, chat.subdir)
+    os.makedirs(path, exist_ok=True)
     # get basic info about the voice note file and prepare it for downloading
     new_file = await context.bot.get_file(update.message.voice.file_id)
+    # We used to get the now timestamp:
+    # ts = datetime.now().strftime("%Y%m%d-%H:%M")
+    # But probably better to get the timestamp of the message:
+    ts = update.message.date.strftime("%Y%m%d-%H:%M")
     # download the voice note as a file
-    ts = datetime.now().strftime("%Y%m%d-%H:%M")
     filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{new_file.file_unique_id}.ogg"
-    await new_file.download_to_drive(filename)
-    chat.log(f"Downloaded voicenote as {filename}")
+    filepath = os.path.join(path, filename)
+    await new_file.download_to_drive(filepath)
+    chat.log(f"Downloaded voicenote as {filepath}")
     await chat.send_msg(f"Thank you for recording your response, {chat.first_name}!")
-    transcript = await chat.transcribe(filename)
+    transcript = await chat.transcribe(filepath)
     # Uncomment the following if you want people to receive their transcripts:
     #chunks = await chunk_msg(f"Transcription:\n\n{transcript}")
     #for chunk in chunks:
@@ -303,6 +305,7 @@ async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /endtutorial, start main sequence'''
     chat = await initialize_chat_handler(update,context)
     chat.tutorial_complete = True
+    chat.subdir = 'story'
     chat.log('Received /endtutorial command')
     # Need to send back in order so will need to track what has been sent to the user
     await chat.send_endtutorial()
