@@ -3,7 +3,6 @@
 ## LIBRARIES TO BE IMPORTED
 import os
 import asyncio
-import json
 import logging
 import random
 import sqlite3
@@ -102,7 +101,7 @@ class ChatHandler:
         self.logger.info(msg)
         top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
 
-    async def choose_random_tutstory(self):
+    async def choose_tutstory(self):
         exclude = str(self.chat_id)
         tutorial_files = [f for f in os.listdir('tutorialstories/') if f.startswith('tutstory')]
         #Uncomment this so we don't send people's voicenotes back to them:
@@ -166,8 +165,8 @@ class ChatHandler:
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
 
-    async def send_random_tutstory(self):
-        random_vn = await self.choose_random_tutstory()
+    async def send_tutstory(self):
+        random_vn = await self.choose_tutstory()
         vn_fullpath = f'tutorialstories/{random_vn}'
         if random_vn:
             await self.send_msg(f"Here's a tutorial story from another participant:")
@@ -182,10 +181,6 @@ class ChatHandler:
             result = c.fetchone()
         return result
 
-    async def send_intro_tutorial(self):
-        self.log(f'Chat {self.chat_id} from {self.name}: Sending first instructions')
-        await self.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
-
     async def send_intro(self):
         self.log(f'Chat {self.chat_id} from {self.name}: Sending second instructions')
         await self.send_msg("""Entering main sequence...""")
@@ -194,7 +189,7 @@ class ChatHandler:
         self.log(f'Chat {self.chat_id} from {self.name}: Completed tutorial')
         await self.send_msg("""Amazing, thanks for completing the tutorial!""")
 
-    async def send_intro_tutstory(self):
+    async def send_first_tutstory(self):
         # Check what voice notes have been sent
         all_sent = True
         for i in range(1,5):
@@ -253,9 +248,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat.log(f'Left group {chat.name}')
         return
     chat.log(f'{update.message.text}')
-    await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /start for further instructions. 😊""")
+    await chat.send_msg(f"""Hey there {chat.first_name}! I'm sorry, unfortunately you can't really chat with me, but I'm happy to point you in the right direction if you're unsure what you need to do next in Wisper!""")
 
-async def get_response(update: Update, context: CallbackContext) -> None:
+async def get_voicenote(update: Update, context: CallbackContext) -> None:
     chat = await initialize_chat_handler(update,context)
     path = os.path.join(chat.directory, chat.subdir)
     os.makedirs(path, exist_ok=True)
@@ -279,7 +274,7 @@ async def get_response(update: Update, context: CallbackContext) -> None:
     #        chat_id=update.effective_chat.id,
     #        text=chunk
     #    )
-    await chat.send_random_tutstory()
+    await chat.send_tutstory()
 
 #def save_start_time(start_time, part_id):
 #    ''' Save start time in seconds to start_time.txt file '''
@@ -294,12 +289,14 @@ async def initialize_chat_handler(update,context=None):
     chat = chat_handlers[chat_id]
     return chat
 
+#------- COMMANDS -------#
+
 async def gettutorialstory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
     chat.log('Received /gettutorialstory command')
     # Need to send back in order so will need to track what has been sent to the user
-    await chat.send_intro_tutstory()
+    await chat.send_first_tutstory()
 
 async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /endtutorial, start main sequence'''
@@ -309,6 +306,11 @@ async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat.log('Received /endtutorial command')
     # Need to send back in order so will need to track what has been sent to the user
     await chat.send_endtutorial()
+
+async def starttutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = await initialize_chat_handler(update,context)
+    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first instructions')
+    await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
 
 async def help_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /help, start logging, say hi, and send voicenote back if it's a DM'''
@@ -329,7 +331,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chat.tutorial_complete:
             await chat.send_intro()
         else:
-            await chat.send_intro_tutorial()
+            await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /starttutorial for further instructions. 😊""")
     #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
     #subprocess.check_output(cmd, shell=True)
 
@@ -347,15 +349,17 @@ if __name__ == '__main__':
     echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     help_handler = CommandHandler('help', help_msg)
     gettutorialstory_handler = CommandHandler('gettutorialstory', gettutorialstory)
+    starttutorial_handler = CommandHandler('starttutorial', starttutorial)
     endtutorial_handler = CommandHandler('endtutorial', endtutorial)
-    response_handler = MessageHandler(filters.VOICE , get_response)
+    voice_handler = MessageHandler(filters.VOICE , get_voicenote)
     start_handler = CommandHandler('start', start)
 
     application.add_handler(echo_handler)
     application.add_handler(help_handler)
     application.add_handler(gettutorialstory_handler)
+    application.add_handler(starttutorial_handler)
     application.add_handler(endtutorial_handler)
-    application.add_handler(response_handler)
+    application.add_handler(voice_handler)
     application.add_handler(start_handler)
 
     application.run_polling()
