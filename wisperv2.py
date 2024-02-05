@@ -53,6 +53,10 @@ chat_handlers = {}
 # CHECK FOR FOLDER TO KEEP TRACK OF WHICH TUTORIAL STORIES HAVE BEEN SENT TO USER ALREADY
 os.makedirs('sent', exist_ok=True)
 
+# List of statuses:
+# 1. tutorial
+# 2. tutorial_complete
+
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
         self.chat_id = chat_id
@@ -60,7 +64,7 @@ class ChatHandler:
         self.context = context
         self.sent = []
         # When chat first starts, the user will be in tutorial mode
-        self.tutorial_complete = False
+        self.status = 'tutorial'
         # Initial voicenotes will be saved under "tutorialresponses"
         self.subdir = 'tutorialresponses'
         if self.chat_type == 'private':
@@ -301,7 +305,7 @@ async def gettutorialstory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /endtutorial, start main sequence'''
     chat = await initialize_chat_handler(update,context)
-    chat.tutorial_complete = True
+    chat.status = 'tutorial_complete'
     chat.subdir = 'story'
     chat.log('Received /endtutorial command')
     # Need to send back in order so will need to track what has been sent to the user
@@ -328,10 +332,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat.log(f'Left group {chat.name}')
         return
     else:
-        if chat.tutorial_complete:
-            await chat.send_intro()
-        else:
+        if chat.status == 'tutorial':
             await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /starttutorial for further instructions. 😊""")
+        else:
+            await chat.send_intro()
     #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
     #subprocess.check_output(cmd, shell=True)
 
