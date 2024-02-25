@@ -269,9 +269,16 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_voicenote(update: Update, context: CallbackContext) -> None:
     chat = await initialize_chat_handler(update,context)
-    for i in range(1,5):
-        if chat.status == f'tut_story{i}received':
-            chat.status = f'tut_story{i}responded'
+    # Check the current status to determine how to handle the voice note
+    if chat.status.startswith('tut_story') and 'received' in chat.status:
+        # Handle as a response to a tutorial story
+        chat.status = chat.status.replace('received', 'responded')
+    elif chat.status == 'awaiting_story_response':
+        # Handle as a user's story following a prompt
+        chat.status = 'story_response_received'
+        # Logic to handle the story voice note
+    else:
+        chat.log("Uncertain how to handle voicenote received in status f{chat.status}")
     path = os.path.join(chat.directory, chat.subdir)
     os.makedirs(path, exist_ok=True)
     # get basic info about the voice note file and prepare it for downloading
