@@ -44,8 +44,8 @@ def load_user_pairs(filename):
 
 user_pairs = load_user_pairs('user_pairs.csv')
 
-def check_user_exists(username, user_pairs):
-    return username in user_pairs
+def get_paired_user(username, user_pairs):
+    return user_pairs.get(username, None)
 
 ## Set up for conversation handler
 GET_PARTICIPANT_NUMBER = 0
@@ -120,11 +120,15 @@ class ChatHandler:
         # Initial voicenotes will be saved under "tutorialresponses"
         self.subdir = 'tutorialresponses'
         if self.chat_type == 'private':
-            self.name = update.message.from_user.full_name
-            try:
+            self.name = update.message.from_user.username
+            if not self.name:  # If username is None or empty
+                self.name = update.message.from_user.full_name
+                try:
+                    self.first_name = update.message.from_user.first_name
+                except AttributeError:
+                    self.first_name = self.name
+            else:
                 self.first_name = update.message.from_user.first_name
-            except AttributeError:
-                self.first_name = self.name
         elif 'group' in self. chat_type: # To inlude both group and supergroup
             self.name = update.message.chat.title
         try:
@@ -450,11 +454,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
     chat.status = 'start_checking_pair'
-    user_exists = check_user_exists(chat.name, user_pairs)
-    if not user_exists:
+    paired_user = get_paired_user(chat.name, user_pairs)
+    if paired_user:
+        await chat.send_msg(f"You are paired with {paired_user}!")
+        chat.status = 'user_paired'
+    else:
         await chat.send_msg("Sorry, we don't have a record of your username!")
+        chat.status = 'user_not_paired'
         return
-    chat.status = 'start_welcomed'
     chat.log('Received /start command')
     bot = chat.context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
@@ -493,5 +500,7 @@ if __name__ == '__main__':
     application.add_handler(endtutorial_handler)
     application.add_handler(voice_handler)
     application.add_handler(start_handler)
+
+    application.run_polling()
 
     application.run_polling()
