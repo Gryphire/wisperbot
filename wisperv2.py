@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 ## LIBRARIES TO BE IMPORTED
+import csv
 import os
 import asyncio
 import logging
@@ -15,11 +16,36 @@ from telegram.error import TimedOut
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
   CommandHandler, ContextTypes, CallbackContext, ConversationHandler)
 import re
+import sys
 
 # MAKE SURE API KEYS ARE USED FROM .ENV FILE
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+## USER PAIRS FILE SETUP
+# Load user pairs from CSV file
+def load_user_pairs(filename):
+    if not os.path.exists(filename):
+        print(f"Error: The file {filename} does not exist.")
+        sys.exit(1)
+    try:
+        user_pairs = {}
+        with open(filename, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                user1, user2 = row
+                user_pairs[user1] = user2
+                user_pairs[user2] = user1  # Assuming a two-way relationship for simplicity
+        return user_pairs
+    except Exception as e:
+        print(f"Failed to load user pairs from {filename}: {e}")
+        sys.exit(1)
+
+user_pairs = load_user_pairs('user_pairs.csv')
+
+def check_user_exists(username, user_pairs):
+    return username in user_pairs
 
 ## Set up for conversation handler
 GET_PARTICIPANT_NUMBER = 0
@@ -423,6 +449,11 @@ async def help_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
+    chat.status = 'start_checking_pair'
+    user_exists = check_user_exists(chat.name, user_pairs)
+    if not user_exists:
+        await chat.send_msg("Sorry, we don't have a record of your username!")
+        return
     chat.status = 'start_welcomed'
     chat.log('Received /start command')
     bot = chat.context.bot
