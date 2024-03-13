@@ -229,12 +229,11 @@ class ChatHandler:
     async def send_endtutorial(self):
         self.log(f'Chat {self.chat_id} from {self.name}: Completed tutorial')
         await self.send_msg("""Amazing, thanks for completing the tutorial!""")
-        if self.paired_user:
-            await self.send_msg(f"You are paired with {self.paired_user}!")
-            self.status = 'user_paired'
-        else:
-            await self.send_msg("Sorry, we don't have a record of your username. There seems to be an error with your pairing.")
-            self.status = 'user_not_paired'
+        await self.start_pairing()
+    
+    async def start_pairing(self):
+        await self.send_msg(f"You are paired with {self.paired_user}!")
+        self.status = 'user_paired'
 
     # Little hacky to have it in a separate function,
     # but I couldn't get it to work within the echo function due to the update and context 
@@ -475,10 +474,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
+        chat.status = 'left_group'
         return
     else:
         await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /starttutorial for further instructions. 😊""")
         await chat.context.bot.send_video(chat_id=chat.chat_id, video=open('explainer.mp4', 'rb'), caption="Watch this tutorial video to get started!", has_spoiler=True)
+        chat.status = 'start_welcomed'
     #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
     #subprocess.check_output(cmd, shell=True)
 
