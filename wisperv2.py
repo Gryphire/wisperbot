@@ -44,9 +44,6 @@ def load_user_pairs(filename):
 
 user_pairs = load_user_pairs('user_pairs.csv')
 
-def get_paired_user(username, user_pairs):
-    return user_pairs.get(username, None)
-
 ## Set up for conversation handler
 GET_PARTICIPANT_NUMBER = 0
 DB = "wisper.db"
@@ -119,24 +116,25 @@ class ChatHandler:
         self._status = 'none'
         # Initial voicenotes will be saved under "tutorialresponses"
         self.subdir = 'tutorialresponses'
+        self.paired_user = None  # Initialize paired_user attribute
         if self.chat_type == 'private':
-            self.name = update.message.from_user.username
-            if not self.name:  # If username is None or empty
-                self.name = update.message.from_user.full_name
-                try:
-                    self.first_name = update.message.from_user.first_name
-                except AttributeError:
-                    self.first_name = self.name
-            else:
-                self.first_name = update.message.from_user.first_name
-        elif 'group' in self. chat_type: # To inlude both group and supergroup
-            self.name = update.message.chat.title
+            self.name = update.message.from_user.username # This will probably break if username not defined
+            self.first_name = update.message.from_user.first_name
+            self.first_name = update.message.from_user.full_name
+        elif 'group' in self.chat_type:  # To include both group and supergroup
+            self.name = update.message.chat.title if update else None
         try:
             with open(f'chat_sessions/chat-{self.chat_id}', 'r', encoding='utf-8') as f:
                 self.number = int(f.read())
         except FileNotFoundError:
             self.number = None
-        self.logger = self.get_logger()
+        self.logger = self.get_logger()# Set the paired user during initialization
+        self.set_paired_user()  
+
+    def set_paired_user(self):
+        '''Set the paired user based on the chat's username'''
+        if self.name:
+            self.paired_user = user_pairs.get(self.name, None)
 
     @property
     def status(self):
@@ -231,6 +229,12 @@ class ChatHandler:
     async def send_endtutorial(self):
         self.log(f'Chat {self.chat_id} from {self.name}: Completed tutorial')
         await self.send_msg("""Amazing, thanks for completing the tutorial!""")
+        if self.paired_user:
+            await self.send_msg(f"You are paired with {self.paired_user}!")
+            self.status = 'user_paired'
+        else:
+            await self.send_msg("Sorry, we don't have a record of your username. There seems to be an error with your pairing.")
+            self.status = 'user_not_paired'
 
     # Little hacky to have it in a separate function,
     # but I couldn't get it to work within the echo function due to the update and context 
@@ -430,12 +434,18 @@ async def gettutorialstory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await chat.send_tutstory()
 
 async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    '''When we receive /endtutorial, start main sequence'''
+    '''When we receive /endtutorial, conclude the tutorial phase and check for user pairing'''
     chat = await initialize_chat_handler(update,context)
     chat.status = 'tut_complete'
     chat.subdir = 'story'
     chat.log('Received /endtutorial command')
-    # Need to send back in order so will need to track what has been sent to the user
+    # Use the paired_user attribute
+    if chat.paired_user:
+        await chat.send_msg(f"You are paired with {chat.paired_user}!")
+        chat.status = 'user_paired'
+    else:
+        await chat.send_msg("Sorry, we don't have a record of your username. There seems to be an error with your pairing.")
+        chat.status = 'user_not_paired'
     await chat.send_endtutorial()
 
 async def starttutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -454,14 +464,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
     chat.status = 'start_checking_pair'
-    paired_user = get_paired_user(chat.name, user_pairs)
-    if paired_user:
-        await chat.send_msg(f"You are paired with {paired_user}!")
-        chat.status = 'user_paired'
-    else:
+    if not chat.paired_user:
         await chat.send_msg("Sorry, we don't have a record of your username!")
         chat.status = 'user_not_paired'
         return
+    else:
+        chat.status = 'user_paired'
     chat.log('Received /start command')
     bot = chat.context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
@@ -500,7 +508,5 @@ if __name__ == '__main__':
     application.add_handler(endtutorial_handler)
     application.add_handler(voice_handler)
     application.add_handler(start_handler)
-
-    application.run_polling()
 
     application.run_polling()
