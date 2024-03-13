@@ -11,6 +11,8 @@ import subprocess
 from datetime import datetime
 import dotenv
 import openai
+from openai import OpenAI
+
 from telegram import Update
 from telegram.error import TimedOut
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
@@ -21,6 +23,7 @@ import sys
 # MAKE SURE API KEYS ARE USED FROM .ENV FILE
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 TRANSCRIBE = os.environ.get("TRANSCRIBE")
 if TRANSCRIBE.lower() == 'false':
     TRANSCRIBE = False
@@ -444,13 +447,6 @@ async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat.status = 'tut_complete'
     chat.subdir = 'story'
     chat.log('Received /endtutorial command')
-    # Use the paired_user attribute
-    if chat.paired_user:
-        await chat.send_msg(f"You are paired with {chat.paired_user}!")
-        chat.status = 'user_paired'
-    else:
-        await chat.send_msg("Sorry, we don't have a record of your username. There seems to be an error with your pairing.")
-        chat.status = 'user_not_paired'
     await chat.send_endtutorial()
 
 async def starttutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
