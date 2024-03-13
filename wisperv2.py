@@ -21,7 +21,11 @@ import sys
 # MAKE SURE API KEYS ARE USED FROM .ENV FILE
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+TRANSCRIBE = os.environ.get("TRANSCRIBE")
+if TRANSCRIBE.lower() == 'false':
+    TRANSCRIBE = False
+else:
+    TRANSCRIBE = True
 
 ## USER PAIRS FILE SETUP
 # Load user pairs from CSV file
@@ -337,19 +341,21 @@ class ChatHandler:
                 self.status = f'tut_completed'
 
     async def transcribe(self,filename):
+        if not TRANSCRIBE:
+            return None
         txt = f"{filename}.txt"
         webm = 'temp.webm'
         cmd = f'ffmpeg -i file:"{filename}" -c:a libopus -b:a 64k -af atempo=2 -y {webm}'
         subprocess.check_output(cmd, shell=True)
         audio_file = open(webm,'rb')
         try:
-            transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
+            transcript = client.audio.transcribe('whisper-1',audio_file).pop('text')
             with open(txt,"w",encoding="utf-8") as f:
                 f.write(transcript)
             self.log(f"Transcribed {filename} to {filename}.txt")
             os.unlink(webm)
             return transcript
-        except openai.error.InvalidRequestError:
+        except openai.InvalidRequestError:
             return None
         #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
         #subprocess.check_output(cmd, shell=True)
