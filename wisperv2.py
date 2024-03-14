@@ -140,8 +140,7 @@ class ChatHandler:
 
     def set_paired_user(self):
         '''Set the paired user based on the chat's username'''
-        if self.name:
-            self.paired_user = user_pairs.get(self.name, None)
+        self.paired_user = user_pairs.get(self.name, None)
 
     @property
     def status(self):
@@ -172,8 +171,12 @@ class ChatHandler:
 
     def log(self, msg):
         '''Log a message to the correct log file'''
-        self.logger.info(msg)
-        top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+        if self.paired_user: # Don't log anything if they aren't paired
+            self.logger.info(msg)
+            top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+        #else:
+            self.logger.info(f'Not logging anything because {self.name} is not paired')
+        #Uncomment the above if you want to show that the bot is not logging anything because the user is not paired
 
     async def choose_random_vn(self):
         exclude = str(self.chat_id)
@@ -193,6 +196,8 @@ class ChatHandler:
 
     async def send_msg(self, text, reply_markup = None):
         '''Send a message in this chat; try infinitely'''
+        if not self.paired_user:
+            return
         while True:
             try:
                 # Make the Telegram request
@@ -464,13 +469,11 @@ async def help_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
-    chat.status = 'start_checking_pair'
     if not chat.paired_user:
-        await chat.send_msg("Sorry, we don't have a record of your username!")
-        chat.status = 'user_not_paired'
+        await chat.context.bot.send_message(
+            chat.chat_id, "Sorry, we don't have a record of your username!", parse_mode='markdown'
+        )
         return
-    else:
-        chat.status = 'user_paired'
     chat.log('Received /start command')
     bot = chat.context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
