@@ -115,9 +115,9 @@ unsent_tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.
 
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
-        if not update.message:
-            print('Received an update without update.message defined.')
-            print(update)
+        if not update.message or not context:
+            missing = "update.message" if not update.message else "context"
+            logging.error(f'Received an update without {missing} defined: {update}')
             return
         self.chat_id = chat_id
         self.chat_type = update.message.chat.type
