@@ -245,11 +245,12 @@ class ChatHandler:
     async def send_endtutorial(self):
         self.log(f'Chat {self.chat_id} from {self.name}: Completed tutorial')
         await self.send_msg("""Amazing, thanks for completing the tutorial!""")
+        self.status = 'tut_ended'
         await self.start_pairing()
     
     async def start_pairing(self):
-        await self.send_msg(f"You are paired with {self.paired_user}!")
-        self.status = 'user_paired'
+        await self.send_msg(f"You are paired with {self.paired_user}! Could you please send a voicenote introducing yourself?")
+        self.status = 'awaiting_intro'
 
     # Little hacky to have it in a separate function,
     # but I couldn't get it to work within the echo function due to the update and context 
@@ -292,6 +293,9 @@ class ChatHandler:
         elif self.status == 'tut_completed':
             await self.send_msg(f"""Hey there {self.first_name}! I'm sorry, unfortunately you can't really chat with me, but I'm happy to point you in the right direction if you're unsure what you need to do next in Wisper!""")
             await self.send_msg(f"Awesome job on completing the tutorial! We're currently working on building the rest of the bot, so this is where the experience ends, at the moment.")
+        elif self.status == 'awaiting_intro':
+            await self.send_msg(f"Please send a voicenote introducing yourself to your partner, {self.paired_user}!")
+            self.status = 'intro_received'
 
     async def send_tutstory(self):
         # Response to user if they try to request a new tutorial story while not having responded to the previous yet
@@ -394,7 +398,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
         return
-    chat.log(f'{update.message.text}')
+    chat.log(f'{chat.name}: {update.message.text}')
     await chat.textresponse_chooser()
     
 async def get_voicenote(update: Update, context: CallbackContext) -> None:
@@ -407,6 +411,8 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
         # Handle as a user's story following a prompt
         chat.status = 'story_response_received'
         # Logic to handle the story voice note
+    elif chat.status == 'awaiting_intro':
+        chat.status = 'intro_received'
     else:
         chat.log(f"Uncertain how to handle voicenote received in status {chat.status}")
     path = os.path.join(chat.directory, chat.subdir)
