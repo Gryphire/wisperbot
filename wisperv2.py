@@ -179,7 +179,7 @@ class ChatHandler:
             self.logger.info(msg)
             top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
         #else:
-            self.logger.info(f'Not logging anything because {self.name} is not paired')
+        #    self.logger.info(f'Not logging anything because {self.name} is not paired')
         #Uncomment the above if you want to show that the bot is not logging anything because the user is not paired
 
     async def choose_random_vn(self):
