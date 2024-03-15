@@ -392,6 +392,8 @@ async def chunk_msg(msg):
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Given a message, echo it back with their name'''
+    if update.channel_post: # Avoid issues from supergroups
+        return
     chat = await initialize_chat_handler(update, context)
     if not chat:
         return
