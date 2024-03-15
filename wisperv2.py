@@ -393,6 +393,8 @@ async def chunk_msg(msg):
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Given a message, echo it back with their name'''
     chat = await initialize_chat_handler(update, context)
+    if not chat:
+        return
     bot = chat.context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         await chat.send_msg("This bot is intended for individual chats only. 🥰 Bye for now")
