@@ -371,7 +371,8 @@ class ChatHandler:
             self.log(f"Transcribed {filename} to {filename}.txt")
             os.unlink(webm)
             return transcript
-        except openai.InvalidRequestError:
+        except Exception as e:
+            self.log(f"Transcription error: {type(e).__name__}, {e}")
             return None
         #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
         #subprocess.check_output(cmd, shell=True)
