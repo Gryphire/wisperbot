@@ -365,9 +365,9 @@ class ChatHandler:
         subprocess.check_output(cmd, shell=True)
         audio_file = open(webm,'rb')
         try:
-            transcript = client.audio.transcribe('whisper-1',audio_file).pop('text')
+            transcript = client.audio.transcriptions.create(model='whisper-1',file=audio_file)
             with open(txt,"w",encoding="utf-8") as f:
-                f.write(transcript)
+                f.write(transcript.text)
             self.log(f"Transcribed {filename} to {filename}.txt")
             os.unlink(webm)
             return transcript
