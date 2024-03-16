@@ -1,12 +1,6 @@
-import csv
-import datetime
 import dotenv
-import logging
 import os
 import re
-import sqlite3
-import sys
-from datetime import datetime
 from telegram import Update
 from telegram.ext import (ApplicationBuilder,
     filters,
@@ -16,16 +10,10 @@ from telegram.ext import (ApplicationBuilder,
     MessageHandler,
     ConversationHandler,
     ApplicationBuilder)
-from openai import OpenAI
-import ChatHandler
+from chat import ChatHandler
 
-DB = "wisper.db"
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-# These lines set TRANSCRIBE and VIDEO to True if the environment variable is not set to 'false'
-TRANSCRIBE = os.environ.get("TRANSCRIBE","").lower() != 'false'
-VIDEO = os.environ.get("VIDEO","").lower() != 'false'
 
 # Define the states for the ConversationHandler
 states = ['TUT_STORY1RECEIVED',
@@ -53,26 +41,6 @@ for i in state_mapping:
 def get_state_name(state_number):
     return state_mapping[state_number]
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-class HTTPXFilter(logging.Filter):
-    '''Filter out lines starting with HTTP'''
-    def filter(self, record):
-        return not record.msg.startswith("HTTP")
-
-top_level_logger = logging.getLogger("top_level")
-top_level_handler = logging.FileHandler("central_log.log")
-top_level_formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-top_level_handler.setFormatter(top_level_formatting)
-top_level_logger.setLevel(logging.INFO)
-top_level_logger.addHandler(top_level_handler)
-top_level_logger.addFilter(HTTPXFilter())
-top_level_logger.propagate = False
-
-# save logger to object that we can call in future to save events to
-logging.getLogger("httpx").addFilter(HTTPXFilter())
 
 # Keep a dictionary of loggers:
 chat_handlers = {}
@@ -82,28 +50,7 @@ os.makedirs('sent', exist_ok=True)
 
 # List of tutorialstories at very start (when none have been sent yet)
 # Note that this variable resets everytime the bot restarts!!
-unsent_tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.startswith('tutstory')]
-
-## USER PAIRS FILE SETUP
-# Load user pairs from CSV file
-def load_user_pairs(filename):
-    if not os.path.exists(filename):
-        print(f"Error: The file {filename} does not exist.")
-        sys.exit(1)
-    try:
-        user_pairs = {}
-        with open(filename, newline='') as csvfile:
-            reader = csv.reader(csvfile)
-            for row in reader:
-                user1, user2 = row
-                user_pairs[user1] = user2
-                user_pairs[user2] = user1  # Assuming a two-way relationship for simplicity
-        return user_pairs
-    except Exception as e:
-        print(f"Failed to load user pairs from {filename}: {e}")
-        sys.exit(1)
-
-user_pairs = load_user_pairs('user_pairs.csv')
+tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.startswith('tutstory')]
 
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
@@ -180,6 +127,65 @@ async def start_tutorial(update, context):
 async def get_tutorial_story(update, context):
     chat = await initialize_chat_handler(update, context)
     chat.log('Received /gettutorialstory command')
+    await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
+    await chat.send_vn(f'tutorialstories/{tutorial_files[0]}')
+    await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
+    chat.status = f'tut_story1received'
+    return TUT_STORY1RECEIVED
+
+class Null:
+    async def send_tutstory(self):
+        # Response to user if they try to request a new tutorial story while not having responded to the previous yet
+        if self.status == 'tut_story1received' or self.status == 'tut_story2received' or self.status == 'tut_story3received' or self.status == 'tut_story4received':
+            await self.send_msg(f"You can't request a new tutorial story yet, because it seems you have not yet sent in your audio response to the last tutorial story.\n\nPlease do that first, and then we will proceed!")
+        # Response to user if they try to run /gettutorialstory while not having run /starttutorial yet
+        elif self.status == 'start_welcomed' or self.status == 'none': 
+            await self.send_msg(f"You can't request a tutorial story yet. Make sure you read the tutorial instructions first.\n\nPlease use the /starttutorial command to proceed. ^^")
+        else:
+            try:
+                # Chooses first 'top' item from unsent list, removes it, assigns to chosenTutStory
+                chosenTutStory = unsent_tutorial_files.pop(0)
+                # Check if chosenTutStory is already featured in database (if so, it's been sent already)
+                presentInDatabase = await self.sqlquery(f'SELECT * FROM logs WHERE filename="{chosenTutStory}" AND chat_id="{self.chat_id}"')
+                print(presentInDatabase)
+                if not presentInDatabase:
+                    self.sent.append(chosenTutStory) #feel like this is no longer necessary?
+                    self.log(f'Sending tutorial story to {self.name}')
+                    self.log(f'Selected the following tutorial story: {chosenTutStory}')
+                    #Responses to user DEPENDING ON THEIR 'LOCATION' in the experience
+                    if self.status == 'tut_started':
+                        pass
+                    elif self.status == 'tut_story1responded':
+                        await self.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+                    elif self.status == 'tut_story2responded':
+                        await self.send_msg(f"Here's the third tutorial story for you to listen to:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+                    elif self.status == 'tut_story3responded':
+                        await self.send_msg(f"Here's the fourth and final tutorial story:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+            except IndexError:
+                await self.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
+                #INSTRUCTIONS USEFUL FOR LATER "To request a prompt and record your own story, use the /requestprompt command. To listen to another person's story, use the /request command."
+                self.log(f'No other voicenotes to choose from. Tutorial completed.')
+                #Need to add a 'tutorialcompleted' variable here that switches to 1 when the user has gone through this, 
+                #so we know not to send them any tutorial related stuff anymore (and not to use any tutorial functions).
+                self.status = f'tut_completed'
 
 async def tut_story1received(update, context):
     chat = await initialize_chat_handler(update, context)
@@ -226,22 +232,13 @@ async def cancel(update, context):
     chat.status = 'cancel'
 
 if __name__ == '__main__':
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS logs (
-      timestamp INTEGER,
-      chat_id INTEGER, 
-      sender TEXT,
-      recver TEXT,
-      filename TEXT
-    )""")
     # Define the conversation handler with states and corresponding functions
     # User runs /start and receives start message
     # From status "none" to status "start_welcomed"
     #start_handler = CommandHandler('start', start)
     # User runs /starttutorial and receives tutorial instructions
     # From status "start_welcomed" to "tut_started"
-    voice_handler = MessageHandler(filters.VOICE , get_voicenote)
+    voice_handler = MessageHandler(filters.VOICE, get_voicenote)
     tutorial_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start),
             CommandHandler('starttutorial', start_tutorial),
@@ -262,7 +259,6 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    logging.info(f"OpenAI transcription is {'on' if TRANSCRIBE else 'off'}, video is {'on' if VIDEO else 'off'}")
     application = ApplicationBuilder().token(TOKEN).build()
     #application.add_handler(start_handler)
     application.add_handler(tutorial_handler)

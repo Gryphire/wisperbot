@@ -1,3 +1,74 @@
+import csv
+from datetime import datetime
+import dotenv
+import logging
+import os
+import sqlite3
+import sys
+from openai import OpenAI
+
+DB = "wisper.db"
+dotenv.load_dotenv()
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# These lines set TRANSCRIBE and VIDEO to True if the environment variable is not set to 'false'
+
+TRANSCRIBE = os.environ.get("TRANSCRIBE","").lower() != 'false'
+VIDEO = os.environ.get("VIDEO","").lower() != 'false'
+
+conn = sqlite3.connect(DB)
+c = conn.cursor()
+c.execute("""CREATE TABLE IF NOT EXISTS logs (
+    timestamp INTEGER,
+    chat_id INTEGER, 
+    sender TEXT,
+    recver TEXT,
+    filename TEXT
+)""")
+
+## USER PAIRS FILE SETUP
+# Load user pairs from CSV file
+def load_user_pairs(filename):
+    if not os.path.exists(filename):
+        print(f"Error: The file {filename} does not exist.")
+        sys.exit(1)
+    try:
+        user_pairs = {}
+        with open(filename, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                user1, user2 = row
+                user_pairs[user1] = user2
+                user_pairs[user2] = user1  # Assuming a two-way relationship for simplicity
+        return user_pairs
+    except Exception as e:
+        print(f"Failed to load user pairs from {filename}: {e}")
+        sys.exit(1)
+
+user_pairs = load_user_pairs('user_pairs.csv')
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+class HTTPXFilter(logging.Filter):
+    '''Filter out lines starting with HTTP'''
+    def filter(self, record):
+        return not record.msg.startswith("HTTP")
+
+top_level_logger = logging.getLogger("top_level")
+top_level_handler = logging.FileHandler("central_log.log")
+top_level_formatting = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+top_level_handler.setFormatter(top_level_formatting)
+top_level_logger.setLevel(logging.INFO)
+top_level_logger.addHandler(top_level_handler)
+top_level_logger.addFilter(HTTPXFilter())
+top_level_logger.propagate = False
+
+# save logger to object that we can call in future to save events to
+logging.getLogger("httpx").addFilter(HTTPXFilter())
+
+logging.info(f"OpenAI transcription is {'on' if TRANSCRIBE else 'off'}, video is {'on' if VIDEO else 'off'}")
+
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
         if not update.message or not context:
