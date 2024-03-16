@@ -1,8 +1,12 @@
 import csv
+import datetime
 import dotenv
 import logging
 import os
+import re
+import sqlite3
 import sys
+from datetime import datetime
 from telegram import Update
 from telegram.ext import (ApplicationBuilder,
     filters,
@@ -14,6 +18,7 @@ from telegram.ext import (ApplicationBuilder,
     ApplicationBuilder)
 from openai import OpenAI
 
+DB = "wisper.db"
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -45,6 +50,13 @@ logging.getLogger("httpx").addFilter(HTTPXFilter())
 # Keep a dictionary of loggers:
 chat_handlers = {}
 
+# CHECK FOR FOLDER TO KEEP TRACK OF WHICH TUTORIAL STORIES HAVE BEEN SENT TO USER ALREADY
+os.makedirs('sent', exist_ok=True)
+
+# List of tutorialstories at very start (when none have been sent yet)
+# Note that this variable resets everytime the bot restarts!!
+unsent_tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.startswith('tutstory')]
+
 ## USER PAIRS FILE SETUP
 # Load user pairs from CSV file
 def load_user_pairs(filename):
@@ -73,6 +85,42 @@ async def initialize_chat_handler(update,context=None):
         chat = chat_handlers[chat_id]
     chat = chat_handlers[chat_id]
     return chat
+
+async def get_voicenote(update: Update, context: CallbackContext) -> None:
+    chat = await initialize_chat_handler(update,context)
+    path = os.path.join(chat.directory, chat.subdir)
+    os.makedirs(path, exist_ok=True)
+    # get basic info about the voice note file and prepare it for downloading
+    new_file = await context.bot.get_file(update.message.voice.file_id)
+    # We used to get the now timestamp:
+    # ts = datetime.now().strftime("%Y%m%d-%H:%M")
+    # But probably better to get the timestamp of the message:
+    ts = update.message.date.strftime("%Y%m%d-%H:%M")
+    # download the voice note as a file
+    filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{new_file.file_unique_id}.ogg"
+    filepath = os.path.join(path, filename)
+    await new_file.download_to_drive(filepath)
+    chat.log(f"Downloaded voicenote as {filepath}")
+    await chat.send_msg(f"Thank you for recording your response, {chat.first_name}!")
+    transcript = await chat.transcribe(filepath)
+    # Uncomment the following if you want people to receive their transcripts:
+    #chunks = await chunk_msg(f"Transcription:\n\n{transcript}")
+    #for chunk in chunks:
+    #    await context.bot.send_message(
+    #        chat_id=update.effective_chat.id,
+    #        text=chunk
+    #    )
+    # Check the current status to determine how to handle the voice note
+    if chat.status.startswith('tut_story') and 'received' in chat.status:
+        # Handle as a response to a tutorial story
+        chat.status = chat.status.replace('received', 'responded')
+    elif chat.status == 'awaiting_story_response':
+        # Handle as a user's story following a prompt
+        chat.status = 'story_response_received'
+        # Logic to handle the story voice note
+    else:
+        chat.log(f"Uncertain how to handle voicenote received in status {chat.status}")
+        return
 
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
@@ -194,6 +242,27 @@ class ChatHandler:
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
 
+    async def transcribe(self,filename):
+        if not TRANSCRIBE:
+            return None
+        txt = f"{filename}.txt"
+        webm = 'temp.webm'
+        cmd = f'ffmpeg -i file:"{filename}" -c:a libopus -b:a 64k -af atempo=2 -y {webm}'
+        subprocess.check_output(cmd, shell=True)
+        audio_file = open(webm,'rb')
+        try:
+            transcript = client.audio.transcriptions.create(model='whisper-1',file=audio_file)
+            with open(txt,"w",encoding="utf-8") as f:
+                f.write(transcript.text)
+            self.log(f"Transcribed {filename} to {filename}.txt")
+            os.unlink(webm)
+            return transcript
+        except Exception as e:
+            self.log(f"Transcription error: {type(e).__name__}, {e}")
+            return None
+        #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
+        #subprocess.check_output(cmd, shell=True)``
+
     async def sqlquery(self,cmd,fetchall=False):
         c.execute(cmd)
         if fetchall:
@@ -202,14 +271,73 @@ class ChatHandler:
             result = c.fetchone()
         return result
 
+    async def send_tutstory(self):
+        # Response to user if they try to request a new tutorial story while not having responded to the previous yet
+        if self.status == 'tut_story1received' or self.status == 'tut_story2received' or self.status == 'tut_story3received' or self.status == 'tut_story4received':
+            await self.send_msg(f"You can't request a new tutorial story yet, because it seems you have not yet sent in your audio response to the last tutorial story.\n\nPlease do that first, and then we will proceed!")
+        # Response to user if they try to run /gettutorialstory while not having run /starttutorial yet
+        elif self.status == 'start_welcomed' or self.status == 'none': 
+            await self.send_msg(f"You can't request a tutorial story yet. Make sure you read the tutorial instructions first.\n\nPlease use the /starttutorial command to proceed. ^^")
+        else:
+            try:
+                # Chooses first 'top' item from unsent list, removes it, assigns to chosenTutStory
+                chosenTutStory = unsent_tutorial_files.pop(0)
+                # Check if chosenTutStory is already featured in database (if so, it's been sent already)
+                presentInDatabase = await self.sqlquery(f'SELECT * FROM logs WHERE filename="{chosenTutStory}" AND chat_id="{self.chat_id}"')
+                print(presentInDatabase)
+                if not presentInDatabase:
+                    self.sent.append(chosenTutStory) #feel like this is no longer necessary?
+                    self.log(f'Sending tutorial story to {self.name}')
+                    self.log(f'Selected the following tutorial story: {chosenTutStory}')
+                    #Responses to user DEPENDING ON THEIR 'LOCATION' in the experience
+                    if self.status == 'tut_started':
+                        await self.send_msg(f"Here's the first tutorial story for you to listen to:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+                    elif self.status == 'tut_story1responded':
+                        await self.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+                    elif self.status == 'tut_story2responded':
+                        await self.send_msg(f"Here's the third tutorial story for you to listen to:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+                    elif self.status == 'tut_story3responded':
+                        await self.send_msg(f"Here's the fourth and final tutorial story:")
+                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
+                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+                        #For logging and status change:
+                        match = re.search(r"\d", chosenTutStory) # Extract digit
+                        i = match.group(0)
+                        self.status = f'tut_story{i}received'
+            except IndexError:
+                await self.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
+                #INSTRUCTIONS USEFUL FOR LATER "To request a prompt and record your own story, use the /requestprompt command. To listen to another person's story, use the /request command."
+                self.log(f'No other voicenotes to choose from. Tutorial completed.')
+                #Need to add a 'tutorialcompleted' variable here that switches to 1 when the user has gone through this, 
+                #so we know not to send them any tutorial related stuff anymore (and not to use any tutorial functions).
+                self.status = f'tut_completed'
+
 # Define the states for the ConversationHandler
 states = ['TUT_STORY1RECEIVED',
-'TUT_STORY2RECEIVED',
-'TUT_STORY3RECEIVED',
-'TUT_STORY4RECEIVED',
 'TUT_STORY1RESPONDED',
+'TUT_STORY2RECEIVED',
 'TUT_STORY2RESPONDED',
+'TUT_STORY3RECEIVED',
 'TUT_STORY3RESPONDED',
+'TUT_STORY4RECEIVED',
 'TUT_STORY4RESPONDED',
 'TUT_COMPLETED',
 'AWAITING_INTRO']
@@ -218,6 +346,8 @@ states_range = range(len(states))
 # Create variables dynamically based on the position in the states list
 for idx, state in enumerate(states):
     exec(f"{state} = {idx}")
+
+state_mapping = dict(zip(states, states_range))
 
 # Map the states to the state numbers
 for i in state_mapping:
@@ -256,18 +386,8 @@ async def start_tutorial(update, context):
 
 async def get_tutorial_story(update, context):
     chat = await initialize_chat_handler(update, context)
-    current_state = chat.status
-    next_state = None
-
-    if next_state:
-        chat.status = next_state
-        # Logic to send the next tutorial story based on the next_state
-    else:
-        await chat.send_msg("You have completed all tutorial stories. You can now proceed to the next step.")
-
-async def start_welcomed(update, context):
-    chat = await initialize_chat_handler(update, context)
-    chat.status = 'start_welcomed'
+    chat.log('Received /gettutorialstory command')
+    await chat.send_tutstory()
 
 async def tut_story1received(update, context):
     chat = await initialize_chat_handler(update, context)
@@ -314,12 +434,22 @@ async def cancel(update, context):
     chat.status = 'cancel'
 
 if __name__ == '__main__':
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS logs (
+      timestamp INTEGER,
+      chat_id INTEGER, 
+      sender TEXT,
+      recver TEXT,
+      filename TEXT
+    )""")
     # Define the conversation handler with states and corresponding functions
     # User runs /start and receives start message
     # From status "none" to status "start_welcomed"
     #start_handler = CommandHandler('start', start)
     # User runs /starttutorial and receives tutorial instructions
     # From status "start_welcomed" to "tut_started"
+    voice_handler = MessageHandler(filters.VOICE , get_voicenote)
     tutorial_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start),
             CommandHandler('starttutorial', start_tutorial),
@@ -327,12 +457,12 @@ if __name__ == '__main__':
         ],
         states={
             TUT_STORY1RECEIVED: [MessageHandler(filters.TEXT, tut_story1received)],
-            TUT_STORY2RECEIVED: [MessageHandler(filters.TEXT, tut_story2received)],
-            TUT_STORY3RECEIVED: [MessageHandler(filters.TEXT, tut_story3received)],
-            TUT_STORY4RECEIVED: [MessageHandler(filters.TEXT, tut_story4received)],
             TUT_STORY1RESPONDED: [MessageHandler(filters.TEXT, tut_story1responded)],
+            TUT_STORY2RECEIVED: [MessageHandler(filters.TEXT, tut_story2received)],
             TUT_STORY2RESPONDED: [MessageHandler(filters.TEXT, tut_story2responded)],
+            TUT_STORY3RECEIVED: [MessageHandler(filters.TEXT, tut_story3received)],
             TUT_STORY3RESPONDED: [MessageHandler(filters.TEXT, tut_story3responded)],
+            TUT_STORY4RECEIVED: [MessageHandler(filters.TEXT, tut_story4received)],
             TUT_STORY4RESPONDED: [MessageHandler(filters.TEXT, tut_story4responded)],
             TUT_COMPLETED: [MessageHandler(filters.TEXT, tut_completed)],
             AWAITING_INTRO: [MessageHandler(filters.TEXT, awaiting_intro)]
@@ -344,4 +474,5 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     #application.add_handler(start_handler)
     application.add_handler(tutorial_handler)
+    application.add_handler(voice_handler)
     application.run_polling()
