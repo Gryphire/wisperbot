@@ -134,60 +134,6 @@ async def get_tutorial_story(update, context):
     chat.status = f'tut_story1received'
     return TUT_STORY1RECEIVED
 
-class Null:
-    async def send_tutstory(self):
-        # Response to user if they try to request a new tutorial story while not having responded to the previous yet
-        if self.status == 'tut_story1received' or self.status == 'tut_story2received' or self.status == 'tut_story3received' or self.status == 'tut_story4received':
-            await self.send_msg(f"You can't request a new tutorial story yet, because it seems you have not yet sent in your audio response to the last tutorial story.\n\nPlease do that first, and then we will proceed!")
-        # Response to user if they try to run /gettutorialstory while not having run /starttutorial yet
-        elif self.status == 'start_welcomed' or self.status == 'none': 
-            await self.send_msg(f"You can't request a tutorial story yet. Make sure you read the tutorial instructions first.\n\nPlease use the /starttutorial command to proceed. ^^")
-        else:
-            try:
-                # Chooses first 'top' item from unsent list, removes it, assigns to chosenTutStory
-                chosenTutStory = unsent_tutorial_files.pop(0)
-                # Check if chosenTutStory is already featured in database (if so, it's been sent already)
-                presentInDatabase = await self.sqlquery(f'SELECT * FROM logs WHERE filename="{chosenTutStory}" AND chat_id="{self.chat_id}"')
-                print(presentInDatabase)
-                if not presentInDatabase:
-                    self.sent.append(chosenTutStory) #feel like this is no longer necessary?
-                    self.log(f'Sending tutorial story to {self.name}')
-                    self.log(f'Selected the following tutorial story: {chosenTutStory}')
-                    #Responses to user DEPENDING ON THEIR 'LOCATION' in the experience
-                    if self.status == 'tut_started':
-                        pass
-                    elif self.status == 'tut_story1responded':
-                        await self.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
-                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
-                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
-                        #For logging and status change:
-                        match = re.search(r"\d", chosenTutStory) # Extract digit
-                        i = match.group(0)
-                        self.status = f'tut_story{i}received'
-                    elif self.status == 'tut_story2responded':
-                        await self.send_msg(f"Here's the third tutorial story for you to listen to:")
-                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
-                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
-                        #For logging and status change:
-                        match = re.search(r"\d", chosenTutStory) # Extract digit
-                        i = match.group(0)
-                        self.status = f'tut_story{i}received'
-                    elif self.status == 'tut_story3responded':
-                        await self.send_msg(f"Here's the fourth and final tutorial story:")
-                        await self.send_vn(f'tutorialstories/{chosenTutStory}')
-                        await self.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
-                        #For logging and status change:
-                        match = re.search(r"\d", chosenTutStory) # Extract digit
-                        i = match.group(0)
-                        self.status = f'tut_story{i}received'
-            except IndexError:
-                await self.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
-                #INSTRUCTIONS USEFUL FOR LATER "To request a prompt and record your own story, use the /requestprompt command. To listen to another person's story, use the /request command."
-                self.log(f'No other voicenotes to choose from. Tutorial completed.')
-                #Need to add a 'tutorialcompleted' variable here that switches to 1 when the user has gone through this, 
-                #so we know not to send them any tutorial related stuff anymore (and not to use any tutorial functions).
-                self.status = f'tut_completed'
-
 async def tut_story1received(update, context):
     chat = await initialize_chat_handler(update, context)
     chat.status = 'tut_story1received'
