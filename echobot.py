@@ -1,3 +1,4 @@
+###---------LIBRARY IMPORTS---------###
 import dotenv
 import os
 import re
@@ -12,10 +13,11 @@ from telegram.ext import (ApplicationBuilder,
     ApplicationBuilder)
 from chat import ChatHandler
 
+###---------INITIALISING VARIABLES---------###
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# Define the states for the ConversationHandler
+###---------CONVERSATION HANDLER SETUP---------###
 states = ['TUT_STORY1RECEIVED',
 'TUT_STORY1RESPONDED',
 'TUT_STORY2RECEIVED',
@@ -40,7 +42,6 @@ for i in state_mapping:
 
 def get_state_name(state_number):
     return state_mapping[state_number]
-
 
 # Keep a dictionary of loggers:
 chat_handlers = {}
