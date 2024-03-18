@@ -137,7 +137,7 @@ class ChatHandler:
     def log(self, msg):
         '''Log a message to the correct log file'''
         if self.paired_user: # Don't log anything if they aren't paired
-            self.logger.info(msg)
+            self.logger.info(f"{self.name}: {msg}")
             top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
         #else:
         #    self.logger.info(f'Not logging anything because {self.name} is not paired')

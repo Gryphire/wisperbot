@@ -127,7 +127,7 @@ async def start_tutorial(update, context):
     '''When we receive /starttutorial, send the first instructions to the user (Tell them to run /gettutorial)'''
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/starttutorial':
-        chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first instructions')
+        chat.log('Received /starttutorial command. Sending first instructions')
         await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
         chat.status = 'tut_started'
         return TUTORIAL_STARTED
@@ -150,11 +150,13 @@ async def get_tutorial_story(update, context):
 
 async def tut_story1received(update, context):
     chat = await initialize_chat_handler(update, context)
+    print(update)
     if update.message.text:
-        await chat.send_msg("Please send a voicenote response to the above!")
+        await chat.send_msg("Please send a voicenote response 😊")
     else:
         get_voicenote(update, context)
-    chat.status = 'tut_story1received'
+        chat.status = 'tut_story1responded'
+        return TUT_STORY1RESPONDED
 
 async def tut_story2received(update, context):
     chat = await initialize_chat_handler(update, context)
