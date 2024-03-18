@@ -1,3 +1,4 @@
+###---------LIBRARY IMPORTS---------###
 import csv
 from datetime import datetime
 import dotenv
@@ -7,14 +8,15 @@ import sqlite3
 import sys
 from openai import OpenAI
 
+###---------INITIALISING NECESSARY VARS---------###
 DB = "wisper.db"
 dotenv.load_dotenv()
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-# These lines set TRANSCRIBE and VIDEO to True if the environment variable is not set to 'false'
-
+# These lines below set TRANSCRIBE and VIDEO to True if the environment variable is not set to 'false'
 TRANSCRIBE = os.environ.get("TRANSCRIBE","").lower() != 'false'
 VIDEO = os.environ.get("VIDEO","").lower() != 'false'
 
+###---------SQLITE DATABASE SETUP---------###
 conn = sqlite3.connect(DB)
 c = conn.cursor()
 c.execute("""CREATE TABLE IF NOT EXISTS logs (
@@ -25,7 +27,7 @@ c.execute("""CREATE TABLE IF NOT EXISTS logs (
     filename TEXT
 )""")
 
-## USER PAIRS FILE SETUP
+###---------USER PAIRS FILE SETUP---------###
 # Load user pairs from CSV file
 def load_user_pairs(filename):
     if not os.path.exists(filename):
@@ -43,9 +45,9 @@ def load_user_pairs(filename):
     except Exception as e:
         print(f"Failed to load user pairs from {filename}: {e}")
         sys.exit(1)
-
 user_pairs = load_user_pairs('user_pairs.csv')
 
+###---------LOGGING SETUP---------###
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -69,6 +71,7 @@ logging.getLogger("httpx").addFilter(HTTPXFilter())
 
 logging.info(f"OpenAI transcription is {'on' if TRANSCRIBE else 'off'}, video is {'on' if VIDEO else 'off'}")
 
+###---------SETTING UP CHATHANDLER CLASS---------###
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
         if not update.message or not context:
