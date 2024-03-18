@@ -7,6 +7,7 @@ import os
 import sqlite3
 import sys
 from openai import OpenAI
+from telegram.constants import ParseMode
 
 ###---------INITIALISING NECESSARY VARS---------###
 DB = "wisper.db"
@@ -111,8 +112,9 @@ class ChatHandler:
 
     @status.setter
     def status(self, value):
-        self.log(f'Status changing from "{self.status}" to "{value}"')
-        self._status = value
+        if self.status != value:
+            self.log(f'Status changing from "{self.status}" to "{value}"')
+            self._status = value
 
     @property
     def directory(self):
@@ -157,7 +159,7 @@ class ChatHandler:
             self.log(f'No suitable voicenotes to choose from.')
             return None
 
-    async def send_msg(self, text, reply_markup = None):
+    async def send_msg(self, text, parse_mode=ParseMode.MARKDOWN, reply_markup = None):
         '''Send a message in this chat; try infinitely'''
         if not self.paired_user:
             return
@@ -165,7 +167,7 @@ class ChatHandler:
             try:
                 # Make the Telegram request
                 await self.context.bot.send_message(
-                    self.chat_id, text, parse_mode='markdown', reply_markup=reply_markup
+                    self.chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup
                 )
                 # Request succeeded, break the loop
                 break

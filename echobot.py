@@ -18,7 +18,9 @@ dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 ###---------CONVERSATION HANDLER SETUP---------###
-states = ['TUT_STORY1RECEIVED',
+states = ['START_WELCOMED',
+'TUTORIAL_STARTED',
+'TUT_STORY1RECEIVED',
 'TUT_STORY1RESPONDED',
 'TUT_STORY2RECEIVED',
 'TUT_STORY2RESPONDED',
@@ -28,6 +30,7 @@ states = ['TUT_STORY1RECEIVED',
 'TUT_STORY4RESPONDED',
 'TUT_COMPLETED',
 'AWAITING_INTRO']
+END = ConversationHandler.END
 states_range = range(len(states))
 
 # Create variables dynamically based on the position in the states list
@@ -111,31 +114,46 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
         chat.status = 'left_group'
-        return
+        return END
     else:
         await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
         await chat.send_msg(f"""Since this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
         await chat.send_video('explainer.mp4')
         await chat.send_msg(f"""Once you have watched the video, enter /starttutorial for further instructions. 😊""")
         chat.status = 'start_welcomed'
+        return START_WELCOMED
 
 async def start_tutorial(update, context):
+    '''When we receive /starttutorial, send the first instructions to the user (Tell them to run /gettutorial)'''
     chat = await initialize_chat_handler(update, context)
-    chat.status = 'tut_started'
-    chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first instructions')
-    await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
+    if update.message.text == '/starttutorial':
+        chat.log(f'Chat {chat.chat_id} from {chat.name}: Sending first instructions')
+        await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
+        chat.status = 'tut_started'
+        return TUTORIAL_STARTED
+    else:
+        await chat.send_msg("""Please run /starttutorial""")
+
 
 async def get_tutorial_story(update, context):
+    '''Run this the first time we receive /gettutorialstory'''
     chat = await initialize_chat_handler(update, context)
-    chat.log('Received /gettutorialstory command')
-    await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
-    await chat.send_vn(f'tutorialstories/{tutorial_files[0]}')
-    await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
-    chat.status = f'tut_story1received'
-    return TUT_STORY1RECEIVED
+    if update.message.text == '/gettutorialstory':
+        chat.log('Received /gettutorialstory command')
+        await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
+        await chat.send_vn(f'tutorialstories/{tutorial_files[0]}')
+        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
+        chat.status = f'tut_story1received'
+        return TUT_STORY1RECEIVED
+    else:
+        await chat.send_msg("""Please run /gettutorialstory""")
 
 async def tut_story1received(update, context):
     chat = await initialize_chat_handler(update, context)
+    if update.message.text:
+        await chat.send_msg("Please send a voicenote response to the above!")
+    else:
+        get_voicenote(update, context)
     chat.status = 'tut_story1received'
 
 async def tut_story2received(update, context):
@@ -187,11 +205,10 @@ if __name__ == '__main__':
     # From status "start_welcomed" to "tut_started"
     voice_handler = MessageHandler(filters.VOICE, get_voicenote)
     tutorial_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start),
-            CommandHandler('starttutorial', start_tutorial),
-            CommandHandler('gettutorialstory', get_tutorial_story),
-        ],
+        entry_points=[CommandHandler('start', start)],
         states={
+            START_WELCOMED: [MessageHandler(filters.TEXT, start_tutorial)],
+            TUTORIAL_STARTED: [MessageHandler(filters.TEXT, get_tutorial_story)],
             TUT_STORY1RECEIVED: [MessageHandler(filters.TEXT, tut_story1received)],
             TUT_STORY1RESPONDED: [MessageHandler(filters.TEXT, tut_story1responded)],
             TUT_STORY2RECEIVED: [MessageHandler(filters.TEXT, tut_story2received)],
