@@ -23,7 +23,9 @@ states = ['START_WELCOMED',
 'TUT_STORY1',
 'TUT_STORY2',
 'TUT_COMPLETED',
-'AWAITING_INTRO']
+'AWAITING_INTRO',
+'RECEIVED_INTRO',
+'WEEK1_PROMPT1']
 END = ConversationHandler.END
 states_range = range(len(states))
 
@@ -166,9 +168,23 @@ async def tut_completed(update, context):
     else:
         await chat.send_msg("Please run /endtutorial")
 
+async def week1(update, context):
+    chat = await initialize_chat_handler(update, context)
+    chat.status = 'week1'
+    await chat.send_msg("Entering week1!")
+
+async def week1_prompt1(update, context):
+    chat = await initialize_chat_handler(update, context)
+    chat.status = 'week1_prompt1'
+    await chat.send_msg("Prompt 1!")
+
 async def awaiting_intro(update, context):
     chat = await initialize_chat_handler(update, context)
     chat.status = 'awaiting_intro'
+
+async def received_intro(update, context):
+    chat = await initialize_chat_handler(update, context)
+    chat.status = 'received_intro'
 
 async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
@@ -190,13 +206,23 @@ if __name__ == '__main__':
             TUT_STORY1: [MessageHandler(filters.TEXT | filters.VOICE, tut_story1)],
             TUT_STORY2: [MessageHandler(filters.TEXT | filters.VOICE, tut_story2)],
             TUT_COMPLETED: [MessageHandler(filters.TEXT, tut_completed)],
-            AWAITING_INTRO: [MessageHandler(filters.TEXT, awaiting_intro)]
+            AWAITING_INTRO: [MessageHandler(filters.TEXT | filters.VOICE, awaiting_intro)],
+            RECEIVED_INTRO: [MessageHandler(filters.TEXT, received_intro)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+    week1_handler = ConversationHandler(
+        entry_points=[CommandHandler('week1', week1)],
+        states={
+            WEEK1_PROMPT1: [MessageHandler(filters.VOICE, week1_prompt1)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
     application = ApplicationBuilder().token(TOKEN).build()
-    #application.add_handler(start_handler)
+
     application.add_handler(tutorial_handler)
+    application.add_handler(week1_handler)
+    #application.add_handler(week2_handler)
     #application.add_handler(voice_handler)
     application.run_polling()
