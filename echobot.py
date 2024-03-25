@@ -12,10 +12,12 @@ from telegram.ext import (ApplicationBuilder,
     ConversationHandler,
     ApplicationBuilder)
 from chat import ChatHandler
+from telegram.constants import ParseMode
 
 ###---------INITIALISING VARIABLES---------###
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
+STARTING_STATUS = os.environ.get("STARTING_STATUS")
 
 ###---------CONVERSATION HANDLER SETUP---------###
 states = ['START_WELCOMED',
@@ -95,6 +97,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     chat.log('Received /start command')
     bot = chat.context.bot
+    if STARTING_STATUS:
+        chat.log(f'Skipping to {STARTING_STATUS}')
+        await chat.send_msg(f'Based on bot\'s .env file, skipping to {STARTING_STATUS}', parse_mode=ParseMode.HTML)
+        return state_mapping[STARTING_STATUS]
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
