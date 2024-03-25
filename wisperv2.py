@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 ## LIBRARIES TO BE IMPORTED
+import csv
 import os
 import asyncio
 import logging
@@ -10,16 +11,45 @@ import subprocess
 from datetime import datetime
 import dotenv
 import openai
+from openai import OpenAI #if needed, run python(x.x) pip install openai --upgrade and then restart, to make this work
+
 from telegram import Update
 from telegram.error import TimedOut
 from telegram.ext import (filters, MessageHandler, ApplicationBuilder,
   CommandHandler, ContextTypes, CallbackContext, ConversationHandler)
 import re
+import sys
 
 # MAKE SURE API KEYS ARE USED FROM .ENV FILE
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+TRANSCRIBE = os.environ.get("TRANSCRIBE")
+if TRANSCRIBE.lower() == 'false':
+    TRANSCRIBE = False
+else:
+    TRANSCRIBE = True
+
+## USER PAIRS FILE SETUP
+# Load user pairs from CSV file
+def load_user_pairs(filename):
+    if not os.path.exists(filename):
+        print(f"Error: The file {filename} does not exist.")
+        sys.exit(1)
+    try:
+        user_pairs = {}
+        with open(filename, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                user1, user2 = row
+                user_pairs[user1] = user2
+                user_pairs[user2] = user1  # Assuming a two-way relationship for simplicity
+        return user_pairs
+    except Exception as e:
+        print(f"Failed to load user pairs from {filename}: {e}")
+        sys.exit(1)
+
+user_pairs = load_user_pairs('user_pairs.csv')
 
 ## Set up for conversation handler
 GET_PARTICIPANT_NUMBER = 0
@@ -85,6 +115,10 @@ unsent_tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.
 
 class ChatHandler:
     def __init__(self, chat_id, update=None, context=None):
+        if not update.message or not context:
+            missing = "update.message" if not update.message else "context"
+            logging.error(f'Received an update without {missing} defined: {update}')
+            return
         self.chat_id = chat_id
         self.chat_type = update.message.chat.type
         self.context = context
@@ -93,20 +127,24 @@ class ChatHandler:
         self._status = 'none'
         # Initial voicenotes will be saved under "tutorialresponses"
         self.subdir = 'tutorialresponses'
+        self.paired_user = None  # Initialize paired_user attribute
         if self.chat_type == 'private':
-            self.name = update.message.from_user.full_name
-            try:
-                self.first_name = update.message.from_user.first_name
-            except AttributeError:
-                self.first_name = self.name
-        elif 'group' in self. chat_type: # To inlude both group and supergroup
-            self.name = update.message.chat.title
+            self.name = update.message.from_user.username # This will probably break if username not defined
+            self.first_name = update.message.from_user.first_name
+            self.first_name = update.message.from_user.full_name
+        elif 'group' in self.chat_type:  # To include both group and supergroup
+            self.name = update.message.chat.title if update else None
         try:
             with open(f'chat_sessions/chat-{self.chat_id}', 'r', encoding='utf-8') as f:
                 self.number = int(f.read())
         except FileNotFoundError:
             self.number = None
-        self.logger = self.get_logger()
+        self.logger = self.get_logger()# Set the paired user during initialization
+        self.set_paired_user()  
+
+    def set_paired_user(self):
+        '''Set the paired user based on the chat's username'''
+        self.paired_user = user_pairs.get(self.name, None)
 
     @property
     def status(self):
@@ -137,8 +175,12 @@ class ChatHandler:
 
     def log(self, msg):
         '''Log a message to the correct log file'''
-        self.logger.info(msg)
-        top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+        if self.paired_user: # Don't log anything if they aren't paired
+            self.logger.info(msg)
+            top_level_logger.info(f"chat-{self.chat_id} {self.name}: {msg}")
+        #else:
+        #    self.logger.info(f'Not logging anything because {self.name} is not paired')
+        #Uncomment the above if you want to show that the bot is not logging anything because the user is not paired
 
     async def choose_random_vn(self):
         exclude = str(self.chat_id)
@@ -158,6 +200,8 @@ class ChatHandler:
 
     async def send_msg(self, text, reply_markup = None):
         '''Send a message in this chat; try infinitely'''
+        if not self.paired_user:
+            return
         while True:
             try:
                 # Make the Telegram request
@@ -201,6 +245,12 @@ class ChatHandler:
     async def send_endtutorial(self):
         self.log(f'Chat {self.chat_id} from {self.name}: Completed tutorial')
         await self.send_msg("""Amazing, thanks for completing the tutorial!""")
+        self.status = 'tut_ended'
+        await self.start_pairing()
+    
+    async def start_pairing(self):
+        await self.send_msg(f"You are paired with {self.paired_user}! Could you please send a voicenote introducing yourself?")
+        self.status = 'awaiting_intro'
 
     # Little hacky to have it in a separate function,
     # but I couldn't get it to work within the echo function due to the update and context 
@@ -243,6 +293,9 @@ class ChatHandler:
         elif self.status == 'tut_completed':
             await self.send_msg(f"""Hey there {self.first_name}! I'm sorry, unfortunately you can't really chat with me, but I'm happy to point you in the right direction if you're unsure what you need to do next in Wisper!""")
             await self.send_msg(f"Awesome job on completing the tutorial! We're currently working on building the rest of the bot, so this is where the experience ends, at the moment.")
+        elif self.status == 'awaiting_intro':
+            await self.send_msg(f"Please send a voicenote introducing yourself to your partner, {self.paired_user}!")
+            self.status = 'intro_received'
 
     async def send_tutstory(self):
         # Response to user if they try to request a new tutorial story while not having responded to the previous yet
@@ -304,19 +357,22 @@ class ChatHandler:
                 self.status = f'tut_completed'
 
     async def transcribe(self,filename):
+        if not TRANSCRIBE:
+            return None
         txt = f"{filename}.txt"
         webm = 'temp.webm'
         cmd = f'ffmpeg -i file:"{filename}" -c:a libopus -b:a 64k -af atempo=2 -y {webm}'
         subprocess.check_output(cmd, shell=True)
         audio_file = open(webm,'rb')
         try:
-            transcript = openai.Audio.transcribe('whisper-1',audio_file).pop('text')
+            transcript = client.audio.transcriptions.create(model='whisper-1',file=audio_file)
             with open(txt,"w",encoding="utf-8") as f:
-                f.write(transcript)
+                f.write(transcript.text)
             self.log(f"Transcribed {filename} to {filename}.txt")
             os.unlink(webm)
             return transcript
-        except openai.error.InvalidRequestError:
+        except Exception as e:
+            self.log(f"Transcription error: {type(e).__name__}, {e}")
             return None
         #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
         #subprocess.check_output(cmd, shell=True)
@@ -336,14 +392,19 @@ async def chunk_msg(msg):
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''Given a message, echo it back with their name'''
-    chat = await initialize_chat_handler(update, context)
-    bot = chat.context.bot
-    if 'group' in chat.chat_type: # To inlude both group and supergroup
-        await chat.send_msg("This bot is intended for individual chats only. 🥰 Bye for now")
+    if update.channel_post: # Avoid issues from supergroups
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
         return
-    chat.log(f'{update.message.text}')
+    chat = await initialize_chat_handler(update, context)
+    if not chat:
+        return
+    bot = chat.context.bot
+    if 'group' in chat.chat_type: # To inlude both group and supergroup
+        await bot.leave_chat(chat_id=chat.chat_id)
+        chat.log(f'Left group {chat.name}')
+        return
+    chat.log(f'{chat.name}: {update.message.text}')
     await chat.textresponse_chooser()
     
 async def get_voicenote(update: Update, context: CallbackContext) -> None:
@@ -356,6 +417,8 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
         # Handle as a user's story following a prompt
         chat.status = 'story_response_received'
         # Logic to handle the story voice note
+    elif chat.status == 'awaiting_intro':
+        chat.status = 'intro_received'
     else:
         chat.log(f"Uncertain how to handle voicenote received in status {chat.status}")
     path = os.path.join(chat.directory, chat.subdir)
@@ -400,12 +463,11 @@ async def gettutorialstory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await chat.send_tutstory()
 
 async def endtutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    '''When we receive /endtutorial, start main sequence'''
+    '''When we receive /endtutorial, conclude the tutorial phase and check for user pairing'''
     chat = await initialize_chat_handler(update,context)
     chat.status = 'tut_complete'
     chat.subdir = 'story'
     chat.log('Received /endtutorial command')
-    # Need to send back in order so will need to track what has been sent to the user
     await chat.send_endtutorial()
 
 async def starttutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -423,16 +485,24 @@ async def help_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
-    chat.status = 'start_welcomed'
+    if not chat.paired_user:
+        await chat.context.bot.send_message(
+            chat.chat_id, "Sorry, we don't have a record of your username!", parse_mode='markdown'
+        )
+        return
     chat.log('Received /start command')
     bot = chat.context.bot
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         await bot.leave_chat(chat_id=chat.chat_id)
         chat.log(f'Left group {chat.name}')
+        chat.status = 'left_group'
         return
     else:
-        await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'active listening', which we will tell you more about in a little bit.\n\nSince this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nReady to practice? Enter /starttutorial for further instructions. 😊""")
-        await chat.context.bot.send_video(chat_id=chat.chat_id, video=open('explainer.mp4', 'rb'), caption="Watch this tutorial video to get started!", has_spoiler=True)
+        await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
+        await chat.send_msg(f"""Since this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
+        await chat.context.bot.send_video(chat_id=chat.chat_id, video=open('explainer.mp4', 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
+        await chat.send_msg(f"""Once you have watched the video, enter /starttutorial for further instructions. 😊""")
+        chat.status = 'start_welcomed'
     #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
     #subprocess.check_output(cmd, shell=True)
 
