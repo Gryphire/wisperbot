@@ -180,7 +180,7 @@ class ChatHandler:
 
     async def send_video(self,FN):
         if VIDEO:
-            await chat.context.bot.send_video(chat_id=chat.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
+            await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
 
     async def send_vn(self,VN):
         '''Send a voicenote file'''
