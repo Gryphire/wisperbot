@@ -8,6 +8,7 @@ import sqlite3
 import sys
 from openai import OpenAI
 from telegram.constants import ParseMode
+import subprocess
 
 ###---------INITIALISING NECESSARY VARS---------###
 DB = "wisper.db"
