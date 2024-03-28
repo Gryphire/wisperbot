@@ -23,10 +23,13 @@ conn = sqlite3.connect(DB)
 c = conn.cursor()
 c.execute("""CREATE TABLE IF NOT EXISTS logs (
     timestamp INTEGER,
-    chat_id INTEGER, 
     sender TEXT,
+    send_id INTEGER, 
     recver TEXT,
-    filename TEXT
+    recv_id INTEGER, 
+    event TEXT,
+    filename TEXT,
+    status TEXT
 )""")
 
 ###---------USER PAIRS FILE SETUP---------###
