@@ -9,6 +9,7 @@ import sys
 from openai import OpenAI
 from telegram.constants import ParseMode
 import subprocess
+import atexit
 
 ###---------INITIALISING NECESSARY VARS---------###
 DB = "wisper.db"
@@ -21,8 +22,7 @@ VIDEO = os.environ.get("VIDEO","").lower() != 'false'
 ###---------SQLITE DATABASE SETUP---------###
 conn = sqlite3.connect(DB)
 c = conn.cursor()
-c.execute("""CREATE TABLE IF NOT EXISTS logs (
-    timestamp INTEGER,
+c.execute("""CREATE TABLE IF NOT EXISTS logs ( timestamp INTEGER,
     sender TEXT,
     send_id INTEGER, 
     recver TEXT,
@@ -109,6 +109,7 @@ class ChatHandler:
     def set_paired_user(self):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
+        # Need to get paired user id somehow
 
     @property
     def status(self):
@@ -188,11 +189,14 @@ class ChatHandler:
 
     async def send_vn(self,VN):
         '''Send a voicenote file'''
-        c.execute("INSERT INTO logs VALUES (?,?,?,?)", 
-                  (datetime.now(),
-                   self.name, 
-                   self.chat_id, 
-                   VN))
+        c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
+          (datetime.now(),
+           self.name, 
+           self.chat_id, 
+           VN,
+           filename,
+           event,
+           status))
         conn.commit()
         self.sent.append(VN)
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
@@ -217,7 +221,7 @@ class ChatHandler:
             self.log(f"Transcription error: {type(e).__name__}, {e}")
             return None
         #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
-        #subprocess.check_output(cmd, shell=True)``
+        #subprocess.check_output(cmd, shell=True)
 
     async def sqlquery(self,cmd,fetchall=False):
         c.execute(cmd)
@@ -285,3 +289,18 @@ class ChatHandler:
                 #Need to add a 'tutorialcompleted' variable here that switches to 1 when the user has gone through this, 
                 #so we know not to send them any tutorial related stuff anymore (and not to use any tutorial functions).
                 self.status = f'tut_completed'
+# Function to dump the logs to a CSV file
+def dump_logs_to_csv():
+    # Fetch all rows from the logs table
+    c.execute("SELECT * FROM logs")
+    rows = c.fetchall()
+
+    # Write the rows to a CSV file
+    with open('logs.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([x[0] for x in c.description])  # write headers
+        writer.writerows(rows)
+
+# Register the function to be called when the program is exiting
+atexit.register(dump_logs_to_csv)
+
