@@ -146,13 +146,13 @@ async def tut_story1(update, context):
     if update.message.text:
         await chat.send_msg("Please send a voicenote response 😊")
     else:
-        chat.status = f'tut_story2received'
         await get_voicenote(update, context)
         chat.status = 'tut_story1responded'
         chat.log('Sending second story')
         await chat.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
         await chat.send_vn(f'tutorialstories/{tutorial_files[1]}')
         await chat.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
+        chat.status = f'tut_story2received'
         return TUT_STORY2
 
 async def tut_story2(update, context):
