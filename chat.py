@@ -192,14 +192,16 @@ class ChatHandler:
 
     async def send_vn(self,VN):
         '''Send a voicenote file'''
+        event = 'send_vn'
         c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
-          (datetime.now(),
-           self.name, 
-           self.chat_id, 
-           VN,
-           filename,
-           event,
-           status))
+          (datetime.now(), # timestamp
+           'bot', # sender
+           '', # send_id
+           self.name, # recver
+           self.chat_id, # recv_id
+           event, # event
+           VN, # filename
+           self.status)) # status
         conn.commit()
         self.sent.append(VN)
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
