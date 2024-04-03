@@ -50,7 +50,9 @@ def load_user_pairs(filename):
     except Exception as e:
         print(f"Failed to load user pairs from {filename}: {e}")
         sys.exit(1)
+
 user_pairs = load_user_pairs('user_pairs.csv')
+name_to_chat_id = {}
 
 ###---------LOGGING SETUP---------###
 logging.basicConfig(
@@ -98,6 +100,7 @@ class ChatHandler:
             self.first_name = update.message.from_user.full_name
         elif 'group' in self.chat_type:  # To include both group and supergroup
             self.name = update.message.chat.title if update else None
+        name_to_chat_id[self.name] = self.chat_id
         try:
             with open(f'chat_sessions/chat-{self.chat_id}', 'r', encoding='utf-8') as f:
                 self.number = int(f.read())
@@ -109,7 +112,7 @@ class ChatHandler:
     def set_paired_user(self):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
-        # Need to get paired user id somehow
+        self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
 
     @property
     def status(self):
