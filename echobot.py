@@ -79,6 +79,7 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
     chat.log(f"Downloaded voicenote as {filepath}")
     await chat.send_msg(f"Thank you for recording your response, {chat.first_name}!")
     transcript = await chat.transcribe(filepath)
+    await chat.log_event(sender=chat.name,recver='bot', recv_id='',event='send_vn',filename=filename)
     # Uncomment the following if you want people to receive their transcripts:
     #chunks = await chunk_msg(f"Transcription:\n\n{transcript}")
     #for chunk in chunks:
@@ -145,13 +146,13 @@ async def tut_story1(update, context):
     if update.message.text:
         await chat.send_msg("Please send a voicenote response 😊")
     else:
+        chat.status = f'tut_story2received'
         await get_voicenote(update, context)
         chat.status = 'tut_story1responded'
         chat.log('Sending second story')
         await chat.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
         await chat.send_vn(f'tutorialstories/{tutorial_files[1]}')
         await chat.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
-        chat.status = f'tut_story2received'
         return TUT_STORY2
 
 async def tut_story2(update, context):
@@ -159,9 +160,9 @@ async def tut_story2(update, context):
     if update.message.text:
         await chat.send_msg("Please send a voicenote response 😊")
     else:
+        chat.status = 'tut_story2responded'
         await get_voicenote(update, context)
         await chat.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
-        chat.status = 'tut_story2responded'
         return TUT_COMPLETED
 
 async def tut_completed(update, context):

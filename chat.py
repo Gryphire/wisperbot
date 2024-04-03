@@ -23,8 +23,8 @@ VIDEO = os.environ.get("VIDEO","").lower() != 'false'
 conn = sqlite3.connect(DB)
 c = conn.cursor()
 c.execute("""CREATE TABLE IF NOT EXISTS logs ( timestamp INTEGER,
+    chat_id INTEGER, 
     sender TEXT,
-    send_id INTEGER, 
     recver TEXT,
     recv_id INTEGER, 
     event TEXT,
@@ -190,19 +190,21 @@ class ChatHandler:
         if VIDEO:
             await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
 
-    async def send_vn(self,VN):
-        '''Send a voicenote file'''
-        event = 'send_vn'
+    async def log_event(self, sender, recver, recv_id, event, filename):
         c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
           (datetime.now(), # timestamp
-           'bot', # sender
-           '', # send_id
-           self.name, # recver
+           self.chat_id, # chat_id
+           sender, # sender
+           recver, # recver
            self.chat_id, # recv_id
            event, # event
-           VN, # filename
+           filename, # filename
            self.status)) # status
         conn.commit()
+
+    async def send_vn(self,VN):
+        '''Send a voicenote file'''
+        await self.log_event(sender='bot',recver=self.name, recv_id='',event='send_vn',filename=VN)
         self.sent.append(VN)
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
