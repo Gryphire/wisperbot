@@ -109,7 +109,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return END
     else:
         await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Echobot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Echobot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
-        await chat.send_msg(f"""Since this is your first time using Echobot, you are currently in the 'tutorial space' of Echobot, where you will practice active listening a couple of times before entering Wisper for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
+        await chat.send_msg(f"""Since this is your first time using Echobot, you are currently in the 'tutorial space' of Echobot, where you will practice active listening a couple of times before entering Echo for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
         await chat.send_video('explainer.mp4')
         await chat.send_msg(f"""Once you have watched the video, enter /starttutorial for further instructions. 😊""")
         chat.status = 'start_welcomed'
