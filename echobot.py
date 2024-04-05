@@ -108,8 +108,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat.status = 'left_group'
         return END
     else:
-        await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
-        await chat.send_msg(f"""Since this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
+        await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Echobot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Echobot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
+        await chat.send_msg(f"""Since this is your first time using Echobot, you are currently in the 'tutorial space' of Echobot, where you will practice active listening a couple of times before entering Wisper for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
         await chat.send_video('explainer.mp4')
         await chat.send_msg(f"""Once you have watched the video, enter /starttutorial for further instructions. 😊""")
         chat.status = 'start_welcomed'
@@ -134,7 +134,7 @@ async def get_tutorial_story(update, context):
         chat.log('Received first /gettutorialstory command')
         await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
         await chat.send_vn(f'tutorialstories/{tutorial_files[0]}')
-        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
+        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Echobot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
         chat.status = f'tut_story1received'
         return TUT_STORY1
     else:
