@@ -180,6 +180,7 @@ class ChatHandler:
                 await self.context.bot.send_message(
                     self.chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup
                 )
+                self.log_send_text(text=text)
                 # Request succeeded, break the loop
                 break
             except TimedOut:
@@ -193,7 +194,7 @@ class ChatHandler:
         if VIDEO:
             await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
 
-    async def log_event(self, sender, recver, recv_id, event, filename):
+    def log_event(self, sender='', recver='', recv_id='', event='', filename=''):
         c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
           (datetime.now(), # timestamp
            self.chat_id, # chat_id
@@ -205,9 +206,21 @@ class ChatHandler:
            self.status)) # status
         conn.commit()
 
+    def log_recv_text(self, text):
+        self.log(f'bot received: {text}')
+        self.log_event(sender=self.name,recver='bot',event=text)
+
+    def log_send_text(self, text):
+        self.log(f'bot sent: {text}')
+        self.log_event(sender='bot',recver=self.name,event=text)
+
+    def log_recv_vn(self, filename):
+        self.log(f"Downloaded voicenote as {filename}")
+        self.log_event(sender=self.name,recver='bot',event='send_vn',filename=filename)
+
     async def send_vn(self,VN):
         '''Send a voicenote file'''
-        await self.log_event(sender='bot',recver=self.name, recv_id='',event='send_vn',filename=VN)
+        self.log_event(sender='bot',recver=self.name,recv_id='',event='send_vn',filename=VN)
         self.sent.append(VN)
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
