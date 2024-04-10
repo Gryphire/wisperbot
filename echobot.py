@@ -188,6 +188,18 @@ async def week1_prompt1(update, context):
 async def awaiting_intro(update, context):
     chat = await initialize_chat_handler(update, context)
     chat.status = 'awaiting_intro'
+    if update.message.text:
+        await chat.send_msg(f"Please send a voicenote introducing yourself to your partner, {chat.paired_user}!")
+    else:
+        await get_voicenote(update, context)
+        # Check the database to see if the other user has sent in their introduction
+        if chat.paired_user in chat_handlers and chat_handlers[chat.paired_user].status == 'received_intro':
+            await chat.send_msg(f"Your partner, {chat.paired_user}, has also sent in their introduction!")
+            intro_file = chat.sqlquery("SELECT filename FROM logs WHERE recv_id=? and event='recv_vn' AND status='received_intro'", (chat.paired_chat_id,))
+            await chat.send_vn(intro_file)
+        else:
+            await chat.send_msg(f"{chat.paired_user} has not yet sent their introduction. You'll receive it as soon as they send it in!")
+        chat.status = 'received_intro'
 
 async def received_intro(update, context):
     chat = await initialize_chat_handler(update, context)

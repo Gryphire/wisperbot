@@ -200,7 +200,7 @@ class ChatHandler:
            self.chat_id, # chat_id
            sender, # sender
            recver, # recver
-           self.chat_id, # recv_id
+           recv_id, # recv_id
            event, # event
            filename, # filename
            self.status)) # status
@@ -216,7 +216,7 @@ class ChatHandler:
 
     def log_recv_vn(self, filename):
         self.log(f"Downloaded voicenote as {filename}")
-        self.log_event(sender=self.name,recver='bot',event='send_vn',filename=filename)
+        self.log_event(sender=self.name,recver='bot',event='recv_vn',filename=filename)
 
     async def send_vn(self,VN):
         '''Send a voicenote file'''
