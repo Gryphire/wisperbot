@@ -208,11 +208,11 @@ class ChatHandler:
 
     def log_recv_text(self, text):
         self.log(f'bot received: {text}')
-        self.log_event(sender=self.name,recver='bot',event=text)
+        self.log_event(sender=self.name,recver='bot',event=f'Received text: {text}')
 
     def log_send_text(self, text):
         self.log(f'bot sent: {text}')
-        self.log_event(sender='bot',recver=self.name,event=text)
+        self.log_event(sender='bot',recver=self.name,event=f'Sent text: {text}')
 
     def log_recv_vn(self, filename):
         self.log(f"Downloaded voicenote as {filename}")
