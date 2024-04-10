@@ -76,9 +76,9 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
     filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{new_file.file_unique_id}.ogg"
     filepath = os.path.join(path, filename)
     await new_file.download_to_drive(filepath)
-    chat.log(f"Downloaded voicenote as {filepath}")
     await chat.send_msg(f"Thank you for recording your response, {chat.first_name}!")
     transcript = await chat.transcribe(filepath)
+    chat.log_recv_vn(filename=filepath)
     # Uncomment the following if you want people to receive their transcripts:
     #chunks = await chunk_msg(f"Transcription:\n\n{transcript}")
     #for chunk in chunks:
@@ -95,7 +95,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat.chat_id, "Sorry, we don't have a record of your username!", parse_mode='markdown'
         )
         return
-    chat.log('Received /start command')
     bot = chat.context.bot
     if STARTING_STATUS:
         chat.log(f'Skipping to {STARTING_STATUS}')
@@ -107,22 +106,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat.status = 'left_group'
         return END
     else:
-        await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Wisperbot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Wisperbot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
-        await chat.send_msg(f"""Since this is your first time using Wisperbot, you are currently in the 'tutorial space' of Wisperbot, where you will practice active listening a couple of times before entering Wisper for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
+        await chat.send_msg(f"""Hi {chat.first_name}! 👋🏻\n\nWelcome to Echobot, which is a bot designed to help you reflect on the values and motivations that are embedded in your life's stories, as well as the stories of others.\n\nIn Echobot, you get to share your story with others based on prompts, and you get to reflect on other people's stories by engaging in 'curious listening', which we will tell you more about in a little bit.""")
+        await chat.send_msg(f"""Since this is your first time using Echobot, you are currently in the 'tutorial space' of Echobot, where you will practice active listening a couple of times before entering Echo for real.\n\nHere is a short, animated explainer video we'd like to ask you to watch before continuing.""")
         await chat.send_video('explainer.mp4')
         await chat.send_msg(f"""Once you have watched the video, enter /starttutorial for further instructions. 😊""")
         chat.status = 'start_welcomed'
+        chat.log_recv_text('Received /start')
         return START_WELCOMED
 
 async def start_tutorial(update, context):
     '''When we receive /starttutorial, send the first instructions to the user (Tell them to run /gettutorial)'''
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/starttutorial':
-        chat.log('Received /starttutorial command. Sending first instructions')
-        await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to listen to a max. of 4 stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
+        await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to two personal stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
         chat.status = 'tut_started'
+        chat.log_recv_text('Received /starttutorial')
         return TUTORIAL_STARTED
     else:
+        chat.log_recv_text(text=update.message.text)
         await chat.send_msg("""Please run /starttutorial""")
 
 
@@ -130,13 +131,14 @@ async def get_tutorial_story(update, context):
     '''Run this the first time we receive /gettutorialstory'''
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/gettutorialstory':
-        chat.log('Received first /gettutorialstory command')
         await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
         await chat.send_vn(f'tutorialstories/{tutorial_files[0]}')
-        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Wisperbot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
+        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Echobot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
         chat.status = f'tut_story1received'
+        chat.log_recv_text('Received /gettutorialstory')
         return TUT_STORY1
     else:
+        chat.log_recv_text(text=update.message.text)
         await chat.send_msg("""Please run /gettutorialstory""")
 
 async def tut_story1(update, context):
@@ -147,7 +149,6 @@ async def tut_story1(update, context):
     else:
         await get_voicenote(update, context)
         chat.status = 'tut_story1responded'
-        chat.log('Sending second story')
         await chat.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
         await chat.send_vn(f'tutorialstories/{tutorial_files[1]}')
         await chat.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
@@ -159,9 +160,9 @@ async def tut_story2(update, context):
     if update.message.text:
         await chat.send_msg("Please send a voicenote response 😊")
     else:
+        chat.status = 'tut_story2responded'
         await get_voicenote(update, context)
         await chat.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
-        chat.status = 'tut_story2responded'
         return TUT_COMPLETED
 
 async def tut_completed(update, context):

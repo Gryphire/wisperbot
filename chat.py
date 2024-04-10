@@ -6,9 +6,13 @@ import logging
 import os
 import sqlite3
 import sys
+import asyncio
+import random
 from openai import OpenAI
 from telegram.constants import ParseMode
+from telegram.error import TimedOut
 import subprocess
+import atexit
 
 ###---------INITIALISING NECESSARY VARS---------###
 DB = "wisper.db"
@@ -21,12 +25,14 @@ VIDEO = os.environ.get("VIDEO","").lower() != 'false'
 ###---------SQLITE DATABASE SETUP---------###
 conn = sqlite3.connect(DB)
 c = conn.cursor()
-c.execute("""CREATE TABLE IF NOT EXISTS logs (
-    timestamp INTEGER,
+c.execute("""CREATE TABLE IF NOT EXISTS logs ( timestamp INTEGER,
     chat_id INTEGER, 
     sender TEXT,
     recver TEXT,
-    filename TEXT
+    recv_id INTEGER, 
+    event TEXT,
+    filename TEXT,
+    status TEXT
 )""")
 
 ###---------USER PAIRS FILE SETUP---------###
@@ -47,7 +53,9 @@ def load_user_pairs(filename):
     except Exception as e:
         print(f"Failed to load user pairs from {filename}: {e}")
         sys.exit(1)
+
 user_pairs = load_user_pairs('user_pairs.csv')
+name_to_chat_id = {}
 
 ###---------LOGGING SETUP---------###
 logging.basicConfig(
@@ -95,6 +103,7 @@ class ChatHandler:
             self.first_name = update.message.from_user.full_name
         elif 'group' in self.chat_type:  # To include both group and supergroup
             self.name = update.message.chat.title if update else None
+        name_to_chat_id[self.name] = self.chat_id
         try:
             with open(f'chat_sessions/chat-{self.chat_id}', 'r', encoding='utf-8') as f:
                 self.number = int(f.read())
@@ -106,6 +115,7 @@ class ChatHandler:
     def set_paired_user(self):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
+        self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
 
     @property
     def status(self):
@@ -170,6 +180,7 @@ class ChatHandler:
                 await self.context.bot.send_message(
                     self.chat_id, text, parse_mode=parse_mode, reply_markup=reply_markup
                 )
+                self.log_send_text(text=text)
                 # Request succeeded, break the loop
                 break
             except TimedOut:
@@ -183,14 +194,33 @@ class ChatHandler:
         if VIDEO:
             await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
 
+    def log_event(self, sender='', recver='', recv_id='', event='', filename=''):
+        c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
+          (datetime.now(), # timestamp
+           self.chat_id, # chat_id
+           sender, # sender
+           recver, # recver
+           self.chat_id, # recv_id
+           event, # event
+           filename, # filename
+           self.status)) # status
+        conn.commit()
+
+    def log_recv_text(self, text):
+        self.log(f'bot received: {text}')
+        self.log_event(sender=self.name,recver='bot',event=f'Received text: {text}')
+
+    def log_send_text(self, text):
+        self.log(f'bot sent: {text}')
+        self.log_event(sender='bot',recver=self.name,event=f'Sent text: {text}')
+
+    def log_recv_vn(self, filename):
+        self.log(f"Downloaded voicenote as {filename}")
+        self.log_event(sender=self.name,recver='bot',event='send_vn',filename=filename)
+
     async def send_vn(self,VN):
         '''Send a voicenote file'''
-        c.execute("INSERT INTO logs VALUES (?,?,?,?)", 
-                  (datetime.now(),
-                   self.name, 
-                   self.chat_id, 
-                   VN))
-        conn.commit()
+        self.log_event(sender='bot',recver=self.name,recv_id='',event='send_vn',filename=VN)
         self.sent.append(VN)
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
@@ -214,7 +244,7 @@ class ChatHandler:
             self.log(f"Transcription error: {type(e).__name__}, {e}")
             return None
         #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
-        #subprocess.check_output(cmd, shell=True)``
+        #subprocess.check_output(cmd, shell=True)
 
     async def sqlquery(self,cmd,fetchall=False):
         c.execute(cmd)
@@ -223,3 +253,18 @@ class ChatHandler:
         else:
             result = c.fetchone()
         return result
+
+# Function to dump the logs to a CSV file
+def dump_logs_to_csv():
+    # Fetch all rows from the logs table
+    c.execute("SELECT * FROM logs")
+    rows = c.fetchall()
+
+    # Write the rows to a CSV file
+    with open('logs.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([x[0] for x in c.description])  # write headers
+        writer.writerows(rows)
+
+# Register the function to be called when the program is exiting
+atexit.register(dump_logs_to_csv)
