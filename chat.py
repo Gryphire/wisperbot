@@ -115,7 +115,9 @@ class ChatHandler:
     def set_paired_user(self):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
+        self.log(f'Paired user set to {self.paired_user}')
         self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
+        self.log(f'Paired user is {self.paired_chat_id}')
 
     @property
     def status(self):
