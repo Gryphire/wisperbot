@@ -115,7 +115,9 @@ class ChatHandler:
     def set_paired_user(self):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
+        self.log(f'Paired user set to {self.paired_user}')
         self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
+        self.log(f'Paired user is {self.paired_chat_id}')
 
     @property
     def status(self):
@@ -200,7 +202,7 @@ class ChatHandler:
            self.chat_id, # chat_id
            sender, # sender
            recver, # recver
-           self.chat_id, # recv_id
+           recv_id, # recv_id
            event, # event
            filename, # filename
            self.status)) # status
@@ -216,7 +218,7 @@ class ChatHandler:
 
     def log_recv_vn(self, filename):
         self.log(f"Downloaded voicenote as {filename}")
-        self.log_event(sender=self.name,recver='bot',event='send_vn',filename=filename)
+        self.log_event(sender=self.name,recver='bot',event='recv_vn',filename=filename)
 
     async def send_vn(self,VN):
         '''Send a voicenote file'''

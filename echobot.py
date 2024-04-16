@@ -169,7 +169,8 @@ async def tut_completed(update, context):
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/endtutorial':
         chat.status = 'tut_completed'
-        await chat.send_msg(f"Please send a voicenote introducing yourself to your partner, {chat.paired_user}!")
+        await chat.send_msg(f"Please send a voicenote introducing yourself to your partner!")
+        chat.subdir = 'intros'
         chat.status = 'awaiting_intro'
         return AWAITING_INTRO
     else:
@@ -188,6 +189,29 @@ async def week1_prompt1(update, context):
 async def awaiting_intro(update, context):
     chat = await initialize_chat_handler(update, context)
     chat.status = 'awaiting_intro'
+    if update.message.text:
+        await chat.send_msg(f"Please send a voicenote introducing yourself to your partner!")
+    else: # If it's a voicenote...
+        chat.status = 'received_intro'
+        await get_voicenote(update, context)
+        # Check the database to see if the other user has sent in their introduction
+        if not chat.paired_chat_id:
+            chat.set_paired_user()
+            await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+        else:
+            paired_chat = chat_handlers[chat.paired_chat_id]
+            await chat.send_msg(f"Your partner, {paired_chat.first_name}, has also sent in their introduction! Here it is:")
+            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.paired_chat_id}' and event='recv_vn' AND status='received_intro'")
+            intro_file = query[0]
+            chat.log(f'Trying to send {intro_file}')
+            await chat.send_vn(intro_file)
+
+            # An inefficient way of doing it but let's see if it works
+            await paired_chat.send_msg(f"Your partner, {chat.first_name}, has also sent in their introduction! Here it is:")
+            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='received_intro'")
+            intro_file = query[0]
+            paired_chat.log(f'Trying to send {intro_file}')
+            await paired_chat.send_vn(intro_file)
 
 async def received_intro(update, context):
     chat = await initialize_chat_handler(update, context)
