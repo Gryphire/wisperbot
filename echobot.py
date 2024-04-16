@@ -20,6 +20,12 @@ from telegram.constants import ParseMode
 dotenv.load_dotenv()
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 STARTING_STATUS = os.environ.get("STARTING_STATUS")
+try:
+    START_DATE = eval(os.environ.get("START_DATE"))
+except TypeError:
+    START_DATE = datetime.now()
+    print('Warning! START_DATE not set to a datetime(YYYY,MM,DD,HH,MM) value in .env file. Using now as START_DATE')
+print(f'START_DATE is {START_DATE}')
 
 ###---------CONVERSATION HANDLER SETUP---------###
 states = ['START_WELCOMED',
