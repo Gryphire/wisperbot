@@ -1,4 +1,5 @@
 ###---------LIBRARY IMPORTS---------###
+from datetime import datetime
 import dotenv
 import os
 import re
@@ -10,7 +11,8 @@ from telegram.ext import (ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     ConversationHandler,
-    ApplicationBuilder)
+    ApplicationBuilder,
+    JobQueue)
 from chat import ChatHandler
 from telegram.constants import ParseMode
 
@@ -26,7 +28,6 @@ states = ['START_WELCOMED',
 'TUT_STORY2',
 'TUT_COMPLETED',
 'AWAITING_INTRO',
-'RECEIVED_INTRO',
 'WEEK1_PROMPT1']
 END = ConversationHandler.END
 states_range = range(len(states))
@@ -60,6 +61,7 @@ async def initialize_chat_handler(update,context=None):
         chat_handlers[chat_id] = ChatHandler(chat_id,update,context)
         chat = chat_handlers[chat_id]
     chat = chat_handlers[chat_id]
+    chat.update = update
     return chat
 
 async def get_voicenote(update: Update, context: CallbackContext) -> None:
@@ -125,7 +127,6 @@ async def start_tutorial(update, context):
     else:
         chat.log_recv_text(text=update.message.text)
         await chat.send_msg("""Please run /starttutorial""")
-
 
 async def get_tutorial_story(update, context):
     '''Run this the first time we receive /gettutorialstory'''
@@ -205,6 +206,8 @@ async def awaiting_intro(update, context):
             intro_file = query[0]
             chat.log(f'Trying to send {intro_file}')
             await chat.send_vn(intro_file)
+            await chat.send_msg(f"Onboarding complete!")
+            chat.status = 'intros_complete'
 
             # An inefficient way of doing it but let's see if it works
             await paired_chat.send_msg(f"Your partner, {chat.first_name}, has also sent in their introduction! Here it is:")
@@ -212,10 +215,13 @@ async def awaiting_intro(update, context):
             intro_file = query[0]
             paired_chat.log(f'Trying to send {intro_file}')
             await paired_chat.send_vn(intro_file)
+            await paired_chat.send_msg(f"Onboarding complete!")
+            paired_chat.status = 'intros_complete'
+            return WEEK1_PROMPT1
 
-async def received_intro(update, context):
+async def week1_prompt1(update, context):
     chat = await initialize_chat_handler(update, context)
-    chat.status = 'received_intro'
+    chat.status = 'week1_prompt1'
 
 async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
@@ -238,7 +244,7 @@ if __name__ == '__main__':
             TUT_STORY2: [MessageHandler(filters.TEXT | filters.VOICE, tut_story2)],
             TUT_COMPLETED: [MessageHandler(filters.TEXT, tut_completed)],
             AWAITING_INTRO: [MessageHandler(filters.TEXT | filters.VOICE, awaiting_intro)],
-            RECEIVED_INTRO: [MessageHandler(filters.TEXT, received_intro)]
+            WEEK1_PROMPT1: [MessageHandler(filters.TEXT | filters.VOICE, week1_prompt1)]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )

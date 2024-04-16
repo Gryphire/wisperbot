@@ -117,7 +117,7 @@ class ChatHandler:
         self.paired_user = user_pairs.get(self.name, None)
         self.log(f'Paired user set to {self.paired_user}')
         self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
-        self.log(f'Paired user is {self.paired_chat_id}')
+        self.log(f'Paired user id is {self.paired_chat_id}')
 
     @property
     def status(self):
@@ -220,12 +220,37 @@ class ChatHandler:
         self.log(f"Downloaded voicenote as {filename}")
         self.log_event(sender=self.name,recver='bot',event='recv_vn',filename=filename)
 
-    async def send_vn(self,VN):
-        '''Send a voicenote file'''
+    async def send_vn(self, context=None, VN=None, Text=None):
+        '''Send a voicenote file, either scheduled or now'''
+        try:
+            update = context.job.data['update']
+            VN = context.job.data['VN']
+            Text = context.job.data['Text']
+        except AttributeError:
+            pass
         self.log_event(sender='bot',recver=self.name,recv_id='',event='send_vn',filename=VN)
         self.sent.append(VN)
         await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
+        if Text:
+            await self.send_msg(Text)
         self.log(f'Sent {VN}')
+    
+    async def schedule_vn(self, send_time, VN, Text):
+        self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
+        now = datetime.now()
+        delay = (send_time - now).total_seconds()
+        self.context.job_queue.run_once(
+            self.send_vn,
+            delay,
+            data={'update': self.update, 'VN': VN, 'Text': Text}
+        )
+    
+    async def vn(self, send_time, VN, Text):
+        now = datetime.now()
+        if now > send_time:
+            await self.send_vn(VN=VN,Text=Text)
+        else:
+            await self.schedule_vn(send_time=send_time,VN=VN,Text=Text)
 
     async def transcribe(self,filename):
         if not TRANSCRIBE:
