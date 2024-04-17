@@ -139,7 +139,7 @@ async def get_tutorial_story(update, context):
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/gettutorialstory':
         await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
-        await chat.send_vn(f'tutorialstories/{tutorial_files[0]}')
+        await chat.send_vn(VN=f'tutorialstories/{tutorial_files[0]}')
         await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Echobot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
         chat.status = f'tut_story1received'
         chat.log_recv_text('Received /gettutorialstory')
@@ -157,7 +157,7 @@ async def tut_story1(update, context):
         await get_voicenote(update, context)
         chat.status = 'tut_story1responded'
         await chat.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
-        await chat.send_vn(f'tutorialstories/{tutorial_files[1]}')
+        await chat.send_vn(VN=f'tutorialstories/{tutorial_files[1]}')
         await chat.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
         chat.status = f'tut_story2received'
         return TUT_STORY2
@@ -194,6 +194,7 @@ async def week1_prompt1(update, context):
     await chat.send_msg("Prompt 1!")
 
 async def awaiting_intro(update, context):
+    '''Await introductions. Once both are received, exchange them between users, then schedule the first prompt.'''
     chat = await initialize_chat_handler(update, context)
     chat.status = 'awaiting_intro'
     if update.message.text:
@@ -211,7 +212,7 @@ async def awaiting_intro(update, context):
             query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.paired_chat_id}' and event='recv_vn' AND status='received_intro'")
             intro_file = query[0]
             chat.log(f'Trying to send {intro_file}')
-            await chat.send_vn(intro_file)
+            await chat.send_vn(VN=intro_file)
             await chat.send_msg(f"Onboarding complete!")
             chat.status = 'intros_complete'
 
@@ -220,14 +221,20 @@ async def awaiting_intro(update, context):
             query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='received_intro'")
             intro_file = query[0]
             paired_chat.log(f'Trying to send {intro_file}')
-            await paired_chat.send_vn(intro_file)
+            await paired_chat.send_vn(VN=intro_file)
             await paired_chat.send_msg(f"Onboarding complete!")
             paired_chat.status = 'intros_complete'
+
+            send_time = START_DATE + timedelta(hours=24)
+            for c in (chat,paired_chat):
+                c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Prompt 1')
+                c.status = 'week1_prompt1'
+
             return WEEK1_PROMPT1
 
 async def week1_prompt1(update, context):
+    '''Await responses to scheduled week 1 prompt 1'''
     chat = await initialize_chat_handler(update, context)
-    chat.status = 'week1_prompt1'
 
 async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
