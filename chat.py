@@ -245,7 +245,7 @@ class ChatHandler:
             data={'update': self.update, 'VN': VN, 'Text': Text}
         )
     
-    async def vn(self, send_time = START_DATE, VN, Text):
+    async def vn(self, send_time, VN, Text):
         now = datetime.now()
         if now > send_time:
             await self.send_vn(VN=VN,Text=Text)
