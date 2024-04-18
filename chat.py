@@ -230,9 +230,9 @@ class ChatHandler:
             pass
         self.log_event(sender='bot',recver=self.name,recv_id='',event='send_vn',filename=VN)
         self.sent.append(VN)
-        await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         if Text:
             await self.send_msg(Text)
+        await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
         self.log(f'Sent {VN}')
     
     async def schedule_vn(self, send_time, VN, Text):

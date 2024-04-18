@@ -1,5 +1,5 @@
 ###---------LIBRARY IMPORTS---------###
-from datetime import datetime
+from datetime import datetime, timedelta
 import dotenv
 import os
 import re
@@ -25,7 +25,12 @@ try:
 except TypeError:
     START_DATE = datetime.now()
     print('Warning! START_DATE not set to a datetime(YYYY,MM,DD,HH,MM) value in .env file. Using now as START_DATE')
-print(f'START_DATE is {START_DATE}')
+try:
+    INTERVAL = eval(os.environ.get("INTERVAL"))
+except TypeError:
+    INTERVAL = timedelta(hours=24)
+
+print(f'START_DATE is {START_DATE} and one "day" is {INTERVAL}')
 
 ###---------CONVERSATION HANDLER SETUP---------###
 states = ['START_WELCOMED',
@@ -225,9 +230,10 @@ async def awaiting_intro(update, context):
             await paired_chat.send_msg(f"Onboarding complete!")
             paired_chat.status = 'intros_complete'
 
-            send_time = START_DATE + timedelta(hours=24)
+            send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
-                c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Prompt 1')
+                await c.send_msg(f"Next prompt will be sent at {send_time}")
+                await c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Welcome to Day 1! Here is prompt 1')
                 c.status = 'week1_prompt1'
 
             return WEEK1_PROMPT1
