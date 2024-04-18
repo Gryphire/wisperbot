@@ -210,25 +210,12 @@ async def awaiting_intro(update, context):
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
             chat.set_paired_user()
+            paired_chat = chat_handlers[chat.paired_chat_id]
+            paired_chat.set_paired_user()
             await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
-            await chat.send_msg(f"Your partner, {paired_chat.first_name}, has also sent in their introduction! Here it is:")
-            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.paired_chat_id}' and event='recv_vn' AND status='received_intro'")
-            intro_file = query[0]
-            chat.log(f'Trying to send {intro_file}')
-            await chat.send_vn(VN=intro_file)
-            await chat.send_msg(f"Onboarding complete!")
-            chat.status = 'intros_complete'
-
-            # An inefficient way of doing it but let's see if it works
-            await paired_chat.send_msg(f"Your partner, {chat.first_name}, has also sent in their introduction! Here it is:")
-            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='received_intro'")
-            intro_file = query[0]
-            paired_chat.log(f'Trying to send {intro_file}')
-            await paired_chat.send_vn(VN=intro_file)
-            await paired_chat.send_msg(f"Onboarding complete!")
-            paired_chat.status = 'intros_complete'
+            await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):

@@ -252,6 +252,17 @@ class ChatHandler:
         else:
             await self.schedule_vn(send_time=send_time,VN=VN,Text=Text)
 
+    async def exchange_vns(self, paired_chat, status, Text):
+            chat = self
+
+            for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
+                query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
+                intro_file = query[0]
+                c.log(f'Trying to send {intro_file}')
+                await c.vn(send_time=datetime.now(),VN=intro_file,Text=f'{Text} Here is your message from {oc.first_name}:')
+                c.status = 'intros_complete'
+                await c.send_msg(f"Onboarding complete!")
+
     async def transcribe(self,filename):
         if not TRANSCRIBE:
             return None
