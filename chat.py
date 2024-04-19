@@ -110,14 +110,22 @@ class ChatHandler:
         except FileNotFoundError:
             self.number = None
         self.logger = self.get_logger()# Set the paired user during initialization
-        self.set_paired_user()  
 
-    def set_paired_user(self):
+    def set_paired_user(self, chat_handlers):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
         self.log(f'Paired user set to {self.paired_user}')
         self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
         self.log(f'Paired user id is {self.paired_chat_id}')
+        try:
+            chat = chat_handlers[self.paired_chat_id]
+            chat.paired_user = self.name
+            chat.log(f'Paired user set to {self.name}')
+            chat.paired_chat_id = self.chat_id
+            chat.log(f'Paired user id is {self.chat_id}')
+        except KeyError:
+            self.log(f'Paired chat id not yet found: {self.paired_user}')
+            pass
 
     @property
     def status(self):

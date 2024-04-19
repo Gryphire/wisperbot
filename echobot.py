@@ -104,6 +104,7 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     '''When we receive /start, start logging, say hi, and send voicenote back if it's a DM'''
     chat = await initialize_chat_handler(update,context)
+    chat.set_paired_user(chat_handlers)
     if not chat.paired_user:
         await chat.context.bot.send_message(
             chat.chat_id, "Sorry, we don't have a record of your username!", parse_mode='markdown'
@@ -210,23 +211,32 @@ async def awaiting_intro(update, context):
         await get_voicenote(update, context)
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
-            chat.set_paired_user()
-            try:
-                paired_chat = chat_handlers[chat.paired_chat_id]
-                paired_chat.set_paired_user()
-            except KeyError:
-                pass
             await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+            return AWAITING_INTRO
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
-            await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
+
+            if paired_chat.status == 'received_intro':
+                await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
+            else:
+                await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+                return AWAITING_INTRO
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
                 c.status = 'intros_complete'
                 await c.send_msg(f"Onboarding complete!")
                 await c.send_msg(f"Next prompt will be sent at {send_time}")
-                await c.send(send_time=send_time,VN=None,Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
+                messages = [
+                    "Welcome to the main Echo experience! You have successfully completed on-boarding, and have been already introduced to your Echo partner.",
+                    "Over the course of this week, you will be exchanging audio messages and listening to one another. Today, we start with reflecting on your life and record an audio story for your partner. You will do so based on a prompt that you and your partner both will receive in a moment.",
+                    "Your personal story prompt is 'What was an experience in your life where you had to handle a complex situation?'",
+                    "Take your time to think about this prompt, and submit your audio when you are ready. Don’t worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
+                    "Make sure you send in your story today, your partner will be doing the same."
+                ]
+                for msg in messages:
+                    await c.send(send_time=send_time, Text=msg)
+
                 c.status = 'week1_prompt1_sent'
 
             return WEEK1_PROMPT1
