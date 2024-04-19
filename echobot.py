@@ -110,6 +110,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     bot = chat.context.bot
+    chat.log_recv_text('/start command')
     if STARTING_STATUS:
         chat.log(f'Skipping to {STARTING_STATUS}')
         await chat.send_msg(f'Based on bot\'s .env file, skipping to {STARTING_STATUS}', parse_mode=ParseMode.HTML)
@@ -125,7 +126,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await chat.send_video('explainer.mp4')
         await chat.send_msg(f"""Once you have watched the video, enter /starttutorial for further instructions. 😊""")
         chat.status = 'start_welcomed'
-        chat.log_recv_text('Received /start')
         return START_WELCOMED
 
 async def start_tutorial(update, context):
@@ -223,8 +223,10 @@ async def awaiting_intro(update, context):
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
+                c.status = 'intros_complete'
+                await c.send_msg(f"Onboarding complete!")
                 await c.send_msg(f"Next prompt will be sent at {send_time}")
-                await c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
+                await c.send(send_time=send_time,VN=None,Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
                 c.status = 'week1_prompt1_sent'
 
             return WEEK1_PROMPT1
@@ -246,7 +248,7 @@ async def week1_prompt1(update, context):
         send_time = START_DATE + INTERVAL
         for c in (chat,paired_chat):
             await c.send_msg(f"Next prompt will be sent at {send_time}")
-            await c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
+            await c.send(send_time=send_time,VN=None,Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
             c.status = 'week1_prompt1_sent'
 
         return WEEK1_VT

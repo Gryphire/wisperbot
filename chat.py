@@ -193,8 +193,27 @@ class ChatHandler:
                 await asyncio.sleep(5)
 
     async def send_video(self,FN):
+        '''Send a video file, try infinitely'''
         if VIDEO:
-            await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
+            while True:
+                try:
+                    await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
+                    self.log(f'Sent {FN}')
+                    break
+                except TimedOut:
+                    self.logger.warning("Request timed out, retrying...")
+                    await asyncio.sleep(5)
+    
+    async def send_vn(self, VN):
+        '''Send a voicenote file, try infinitely'''
+        while True:
+            try:
+                await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
+                self.log_send_vn(VN)
+                break
+            except TimedOut:
+                self.logger.warning("Request timed out, retrying...")
+                await asyncio.sleep(5)
 
     def log_event(self, sender='', recver='', recv_id='', event='', filename=''):
         c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
@@ -220,37 +239,43 @@ class ChatHandler:
         self.log(f"Downloaded voicenote as {filename}")
         self.log_event(sender=self.name,recver='bot',event='recv_vn',filename=filename)
 
-    async def send_vn(self, context=None, VN=None, Text=None):
-        '''Send a voicenote file, either scheduled or now'''
+    def log_send_vn(self, filename):
+        self.log(f"Sent voicenote {filename}")
+        self.log_event(sender='bot',recver=self.name,event='send_vn',filename=filename)
+
+    # I think we should have function send(send_time, VN, TEXT)
+    # this will call either send_msg or send_vn
+    async def send_now(self, context=None, VN=None, Text=None):
+        '''Send a voicenote file or message, either scheduled or now'''
         try:
             update = context.job.data['update']
             VN = context.job.data['VN']
             Text = context.job.data['Text']
         except AttributeError:
             pass
-        self.log_event(sender='bot',recver=self.name,recv_id='',event='send_vn',filename=VN)
-        self.sent.append(VN)
         if Text:
             await self.send_msg(Text)
-        await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
-        self.log(f'Sent {VN}')
+        if VN:
+            await self.send_vn(VN)
     
-    async def schedule_vn(self, send_time, VN, Text):
+    async def schedule(self, send_time, VN, Text):
         self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
         now = datetime.now()
         delay = (send_time - now).total_seconds()
         self.context.job_queue.run_once(
-            self.send_vn,
+            self.send_now,
             delay,
             data={'update': self.update, 'VN': VN, 'Text': Text}
         )
     
-    async def vn(self, send_time, VN, Text):
+    async def send(self, send_time = None, VN = None, Text = None):
         now = datetime.now()
-        if now > send_time:
-            await self.send_vn(VN=VN,Text=Text)
+        # If send_time is None or in the past, send immediately
+        if not send_time or now > send_time:
+            await self.send_now(VN=VN,Text=Text)
         else:
-            await self.schedule_vn(send_time=send_time,VN=VN,Text=Text)
+            # Otherwise, schedule the send
+            await self.schedule(send_time=send_time,VN=VN,Text=Text)
 
     async def exchange_vns(self, paired_chat, status, Text):
             chat = self
@@ -259,9 +284,7 @@ class ChatHandler:
                 query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
                 intro_file = query[0]
                 c.log(f'Trying to send {intro_file}')
-                await c.vn(send_time=datetime.now(),VN=intro_file,Text=f'{Text} Here is your message from {oc.first_name}:')
-                c.status = 'intros_complete'
-                await c.send_msg(f"Onboarding complete!")
+                await c.send(send_time=datetime.now(),VN=intro_file,Text=f'{Text} Here is your message from {oc.first_name}:')
 
     async def transcribe(self,filename):
         if not TRANSCRIBE:
