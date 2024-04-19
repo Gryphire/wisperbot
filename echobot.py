@@ -211,8 +211,11 @@ async def awaiting_intro(update, context):
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
             chat.set_paired_user()
-            paired_chat = chat_handlers[chat.paired_chat_id]
-            paired_chat.set_paired_user()
+            try:
+                paired_chat = chat_handlers[chat.paired_chat_id]
+                paired_chat.set_paired_user()
+            except KeyError:
+                pass
             await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
