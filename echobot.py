@@ -235,9 +235,10 @@ async def awaiting_intro(update, context):
                     "Make sure you send in your story today, your partner will be doing the same."
                 ]
                 for msg in messages:
-                    await c.send(send_time=send_time, Text=msg)
+                    send_time = send_time + timedelta(seconds=1)
+                    await c.send(send_time=send_time, Text=msg, status='week1_prompt1_sent')
 
-                c.status = 'week1_prompt1_sent'
+                c.status = 'week1_prompt1_scheduled'
 
             return WEEK1_PROMPT1
 

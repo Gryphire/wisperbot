@@ -253,12 +253,14 @@ class ChatHandler:
 
     # I think we should have function send(send_time, VN, TEXT)
     # this will call either send_msg or send_vn
-    async def send_now(self, context=None, VN=None, Text=None):
+    async def send_now(self, context=None, VN=None, Text=None, status=None):
         '''Send a voicenote file or message, either scheduled or now'''
+        self.status = status
         try:
             update = context.job.data['update']
             VN = context.job.data['VN']
             Text = context.job.data['Text']
+            status = context.job.data['status']
         except AttributeError:
             pass
         if Text:
@@ -266,24 +268,25 @@ class ChatHandler:
         if VN:
             await self.send_vn(VN)
     
-    async def schedule(self, send_time, VN, Text):
+    async def schedule(self, send_time, VN, Text, status):
         self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
         now = datetime.now()
         delay = (send_time - now).total_seconds()
         self.context.job_queue.run_once(
             self.send_now,
             delay,
-            data={'update': self.update, 'VN': VN, 'Text': Text}
+            data={'update': self.update, 'VN': VN, 'Text': Text, 'status': status}
         )
     
-    async def send(self, send_time = None, VN = None, Text = None):
+    async def send(self, send_time=None, VN=None, Text=None, status=None):
         now = datetime.now()
         # If send_time is None or in the past, send immediately
         if not send_time or now > send_time:
             await self.send_now(VN=VN,Text=Text)
+            self.status = status
         else:
             # Otherwise, schedule the send
-            await self.schedule(send_time=send_time,VN=VN,Text=Text)
+            await self.schedule(send_time=send_time,VN=VN,Text=Text,status=status)
 
     async def exchange_vns(self, paired_chat, status, Text):
             chat = self
