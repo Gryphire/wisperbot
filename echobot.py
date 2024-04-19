@@ -39,7 +39,8 @@ states = ['START_WELCOMED',
 'TUT_STORY2',
 'TUT_COMPLETED',
 'AWAITING_INTRO',
-'WEEK1_PROMPT1']
+'WEEK1_PROMPT1',
+'WEEK1_VT']
 END = ConversationHandler.END
 states_range = range(len(states))
 
@@ -220,14 +221,32 @@ async def awaiting_intro(update, context):
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
                 await c.send_msg(f"Next prompt will be sent at {send_time}")
-                await c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Welcome to Day 1! Here is prompt 1')
-                c.status = 'week1_prompt1'
+                await c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
+                c.status = 'week1_prompt1_sent'
 
             return WEEK1_PROMPT1
 
 async def week1_prompt1(update, context):
     '''Await responses to scheduled week 1 prompt 1'''
     chat = await initialize_chat_handler(update, context)
+    chat.status = 'awaiting_week1_prompt1'
+    if update.message.text:
+        await chat.send_msg(f"Please send a story response to the above prompt")
+    else:
+        chat.status = 'received_week1_story'
+        await get_voicenote(update, context)
+        paired_chat = chat_handlers[chat.paired_chat_id]
+        if paired_chat.status == 'received_week1_story':
+            await chat.exchange_vns(paired_chat, status='received_week1_story', Text=f"Your partner has also sent in their story!")
+        else:
+            await chat.send_msg(f"Your partner has not yet sent their story. You'll receive it as soon as they send it in!")
+        send_time = START_DATE + INTERVAL
+        for c in (chat,paired_chat):
+            await c.send_msg(f"Next prompt will be sent at {send_time}")
+            await c.vn(send_time=send_time,VN='prompts/prompt1.ogg',Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
+            c.status = 'week1_prompt1_sent'
+
+        return WEEK1_VT
 
 async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
