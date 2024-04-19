@@ -190,16 +190,6 @@ async def tut_completed(update, context):
     else:
         await chat.send_msg("Please run /endtutorial")
 
-async def week1(update, context):
-    chat = await initialize_chat_handler(update, context)
-    chat.status = 'week1'
-    await chat.send_msg("Entering week1!")
-
-async def week1_prompt1(update, context):
-    chat = await initialize_chat_handler(update, context)
-    chat.status = 'week1_prompt1'
-    await chat.send_msg("Prompt 1!")
-
 async def awaiting_intro(update, context):
     '''Await introductions. Once both are received, exchange them between users, then schedule the first prompt.'''
     chat = await initialize_chat_handler(update, context)
@@ -237,7 +227,6 @@ async def awaiting_intro(update, context):
                 for msg in messages:
                     send_time = send_time + timedelta(seconds=1)
                     await c.send(send_time=send_time, Text=msg, status='week1_prompt1_sent')
-
                 c.status = 'week1_prompt1_scheduled'
 
             return WEEK1_PROMPT1
@@ -249,20 +238,22 @@ async def week1_prompt1(update, context):
     if update.message.text:
         await chat.send_msg(f"Please send a story response to the above prompt")
     else:
-        chat.status = 'received_week1_story'
         await get_voicenote(update, context)
+        chat.status = 'received_week1_story'
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_story':
             await chat.exchange_vns(paired_chat, status='received_week1_story', Text=f"Your partner has also sent in their story!")
+            send_time = START_DATE + INTERVAL
+            for c in (chat,paired_chat):
+                await c.send_msg(f"Next prompt will be sent at {send_time}")
         else:
             await chat.send_msg(f"Your partner has not yet sent their story. You'll receive it as soon as they send it in!")
-        send_time = START_DATE + INTERVAL
-        for c in (chat,paired_chat):
-            await c.send_msg(f"Next prompt will be sent at {send_time}")
-            await c.send(send_time=send_time,VN=None,Text='Welcome to Day 1! Here is prompt 1. Please record a story.')
-            c.status = 'week1_prompt1_sent'
-
         return WEEK1_VT
+
+async def week1_vt(update, context):
+    chat = await initialize_chat_handler(update, context)
+    chat.status = 'week1_vt'
+    await chat.send_msg("VT!")
 
 async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
@@ -285,22 +276,22 @@ if __name__ == '__main__':
             TUT_STORY2: [MessageHandler(filters.TEXT | filters.VOICE, tut_story2)],
             TUT_COMPLETED: [MessageHandler(filters.TEXT, tut_completed)],
             AWAITING_INTRO: [MessageHandler(filters.TEXT | filters.VOICE, awaiting_intro)],
-            WEEK1_PROMPT1: [MessageHandler(filters.TEXT | filters.VOICE, week1_prompt1)]
+            WEEK1_PROMPT1: [MessageHandler(filters.TEXT | filters.VOICE, week1_prompt1)],
+            WEEK1_VT: [MessageHandler(filters.TEXT | filters.VOICE, week1_vt)]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-    week1_handler = ConversationHandler(
-        entry_points=[CommandHandler('week1', week1)],
-        states={
-            WEEK1_PROMPT1: [MessageHandler(filters.VOICE, week1_prompt1)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)]
-    )
+    #week1_handler = ConversationHandler(
+        #entry_points=[CommandHandler('week1', week1)],
+        #states={
+            #WEEK1_PROMPT1: [MessageHandler(filters.VOICE, week1_prompt1)],
+        #},
+        #fallbacks=[CommandHandler('cancel', cancel)]
+    #)
 
     application = ApplicationBuilder().token(TOKEN).build()
 
     application.add_handler(tutorial_handler)
-    application.add_handler(week1_handler)
     #application.add_handler(week2_handler)
     #application.add_handler(voice_handler)
     application.run_polling()

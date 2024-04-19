@@ -255,7 +255,6 @@ class ChatHandler:
     # this will call either send_msg or send_vn
     async def send_now(self, context=None, VN=None, Text=None, status=None):
         '''Send a voicenote file or message, either scheduled or now'''
-        self.status = status
         try:
             update = context.job.data['update']
             VN = context.job.data['VN']
@@ -263,6 +262,7 @@ class ChatHandler:
             status = context.job.data['status']
         except AttributeError:
             pass
+        self.status = status
         if Text:
             await self.send_msg(Text)
         if VN:
