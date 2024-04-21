@@ -200,7 +200,7 @@ async def awaiting_intro(update, context):
         await get_voicenote(update, context)
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
-            await chat.send_msg(f"1Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+            await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
             return WEEK1_PROMPT1
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
@@ -208,14 +208,13 @@ async def awaiting_intro(update, context):
             if paired_chat.status == 'received_intro':
                 await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
             else:
-                await chat.send_msg(f"2Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+                await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
                 return WEEK1_PROMPT1
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
                 c.status = 'intros_complete'
                 await c.send_msg(f"Onboarding complete!")
-                await c.send_msg(f"Next prompt will be sent at {send_time}")
                 messages = [
                     "Welcome to the main Echo experience! You have successfully completed on-boarding, and have been already introduced to your Echo partner.",
                     "Over the course of this week, you will be exchanging audio messages and listening to one another. Today, we start with reflecting on your life and record an audio story for your partner. You will do so based on a prompt that you and your partner both will receive in a moment.",
@@ -223,9 +222,7 @@ async def awaiting_intro(update, context):
                     "Take your time to think about this prompt, and submit your audio when you are ready. Don’t worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
                     "Make sure you send in your story today, your partner will be doing the same."
                 ]
-                for msg in messages:
-                    send_time = send_time + timedelta(seconds=1)
-                    await c.send(send_time=send_time, Text=msg)
+                await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_prompt1'
             return WEEK1_PROMPT1
 
@@ -241,12 +238,22 @@ async def week1_prompt1(update, context):
     else:
         chat.status = 'received_week1_story'
         await get_voicenote(update, context)
+        await chat.send_msg(f"Thank you for submitting your audio story, {chat.first_name}! Your story has been saved, but will not yet be sent to your partner. Before that happens, you will be asked to complete one more part tomorrow.")
+        await chat.send_msg("Stay tuned, you will receive continue the Echo journey tomorrow.")
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_story':
             await chat.exchange_vns(paired_chat, status='received_week1_story', Text=f"Your partner has also sent in their story!")
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
-                await c.send_msg(f"Next prompt will be sent at {send_time}")
+                c.status = 'day1_complete'
+                await c.send_msg(f"Day 1 complete!")
+                messages = [
+                    "Welcome back! Yesterday you recorded a personal story. Today, we would like you to listen to your own story, and think about whether and how you have had to balance between different values. This balancing is what we call ‘value tensions’.",
+                    "Here are some examples of value tensions.",
+                    "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on one or two of the following value tensions, and send this to your Echo partner in an audio message. Note that you do not need to cover all of these tension; just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
+                ]
+                await c.send_msgs(messages, send_time)
+                c.status = 'awaiting_week1_vt'
         else:
             await chat.send_msg(f"Your partner has not yet sent their story. You'll receive it as soon as they send it in!")
         return WEEK1_VT

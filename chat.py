@@ -1,6 +1,6 @@
 ###---------LIBRARY IMPORTS---------###
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 import dotenv
 import logging
 import os
@@ -199,6 +199,12 @@ class ChatHandler:
 
                 # Wait a few seconds before retrying
                 await asyncio.sleep(5)
+    
+    async def send_msgs(self, messages, send_time):
+        await self.send_msg(f"Next prompt will be sent at {send_time}")
+        for msg in messages:
+            send_time = send_time + timedelta(seconds=1)
+            await self.send(send_time=send_time, Text=msg)
 
     async def send_video(self,FN):
         '''Send a video file, try infinitely'''
