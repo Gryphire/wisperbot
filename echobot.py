@@ -250,6 +250,7 @@ async def week1_prompt1(update, context):
                 messages = [
                     "Welcome back! Yesterday you recorded a personal story. Today, we would like you to listen to your own story, and think about whether and how you have had to balance between different values. This balancing is what we call ‘value tensions’.",
                     "Here are some examples of value tensions.",
+                    'img:vt.png',
                     "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on one or two of the following value tensions, and send this to your Echo partner in an audio message. Note that you do not need to cover all of these tension; just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
                 ]
                 await c.send_msgs(messages, send_time)

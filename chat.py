@@ -203,8 +203,13 @@ class ChatHandler:
     async def send_msgs(self, messages, send_time):
         await self.send_msg(f"Next prompt will be sent at {send_time}")
         for msg in messages:
-            send_time = send_time + timedelta(seconds=1)
-            await self.send(send_time=send_time, Text=msg)
+            if msg.startswith('img:'):
+                img = msg.split(':')[1]
+                send_time = send_time + timedelta(seconds=1)
+                await self.send(send_time=send_time, img=img)
+            else:
+                send_time = send_time + timedelta(seconds=1)
+                await self.send(send_time=send_time, Text=msg)
 
     async def send_video(self,FN):
         '''Send a video file, try infinitely'''
@@ -212,7 +217,7 @@ class ChatHandler:
             while True:
                 try:
                     await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
-                    self.log(f'Sent {FN}')
+                    self.log_send_video(FN)
                     break
                 except TimedOut:
                     self.logger.warning("Request timed out, retrying...")
@@ -224,6 +229,17 @@ class ChatHandler:
             try:
                 await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
                 self.log_send_vn(VN)
+                break
+            except TimedOut:
+                self.logger.warning("Request timed out, retrying...")
+                await asyncio.sleep(5)
+
+    async def send_img(self, img):
+        '''Send an image file, try infinitely'''
+        while True:
+            try:
+                await self.context.bot.send_photo(chat_id=self.chat_id, photo=img)
+                self.log_send_img(img)
                 break
             except TimedOut:
                 self.logger.warning("Request timed out, retrying...")
@@ -256,15 +272,24 @@ class ChatHandler:
     def log_send_vn(self, filename):
         self.log(f"Sent voicenote {filename}")
         self.log_event(sender='bot',recver=self.name,event='send_vn',filename=filename)
+    
+    def log_send_img(self, filename):
+        self.log(f"Sent image {filename}")
+        self.log_event(sender='bot',recver=self.name,event='send_img',filename=filename)
+    
+    def log_send_video(self, filename):
+        self.log(f"Sent video {filename}")
+        self.log_event(sender='bot',recver=self.name,event='send_video',filename=filename)
 
     # I think we should have function send(send_time, VN, TEXT)
     # this will call either send_msg or send_vn
-    async def send_now(self, context=None, VN=None, Text=None, status=None):
+    async def send_now(self, context=None, VN=None, Text=None, img=None, status=None):
         '''Send a voicenote file or message, either scheduled or now'''
         try:
             update = context.job.data['update']
             VN = context.job.data['VN']
             Text = context.job.data['Text']
+            img = context.job.data['img']
             status = context.job.data['status']
         except AttributeError:
             pass
@@ -274,27 +299,29 @@ class ChatHandler:
             await self.send_msg(Text)
         if VN:
             await self.send_vn(VN)
+        if img:
+            await self.send_img(img)
     
-    async def schedule(self, send_time, VN, Text, status):
+    async def schedule(self, send_time, VN, Text, img, status):
         self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
         now = datetime.now()
         delay = (send_time - now).total_seconds()
         self.context.job_queue.run_once(
             self.send_now,
             delay,
-            data={'update': self.update, 'VN': VN, 'Text': Text, 'status': status}
+            data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status}
         )
     
-    async def send(self, send_time=None, VN=None, Text=None, status=None):
+    async def send(self, send_time=None, VN=None, Text=None, img=None, status=None):
         now = datetime.now()
         # If send_time is None or in the past, send immediately
         if not send_time or now > send_time:
-            await self.send_now(VN=VN,Text=Text)
+            await self.send_now(VN=VN,Text=Text,img=img)
             if status:
                 self.status = status
         else:
             # Otherwise, schedule the send
-            await self.schedule(send_time=send_time,VN=VN,Text=Text,status=status)
+            await self.schedule(send_time=send_time,VN=VN,Text=Text,img=img,status=status)
 
     async def exchange_vns(self, paired_chat, status, Text):
             chat = self
