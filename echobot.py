@@ -109,7 +109,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await chat.context.bot.send_message(
             chat.chat_id, "Sorry, we don't have a record of your username!", parse_mode='markdown'
         )
-        return
+        return END
     bot = chat.context.bot
     chat.log_recv_text('/start command')
     if STARTING_STATUS:
@@ -193,7 +193,6 @@ async def tut_completed(update, context):
 async def awaiting_intro(update, context):
     '''Await introductions. Once both are received, exchange them between users, then schedule the first prompt.'''
     chat = await initialize_chat_handler(update, context)
-    chat.status = 'awaiting_intro'
     if update.message.text:
         await chat.send_msg(f"Please send a voicenote introducing yourself to your partner!")
     else: # If it's a voicenote...
@@ -201,16 +200,16 @@ async def awaiting_intro(update, context):
         await get_voicenote(update, context)
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
-            await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
-            return AWAITING_INTRO
+            await chat.send_msg(f"1Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+            return WEEK1_PROMPT1
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
 
             if paired_chat.status == 'received_intro':
                 await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
             else:
-                await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
-                return AWAITING_INTRO
+                await chat.send_msg(f"2Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+                return WEEK1_PROMPT1
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
@@ -226,20 +225,22 @@ async def awaiting_intro(update, context):
                 ]
                 for msg in messages:
                     send_time = send_time + timedelta(seconds=1)
-                    await c.send(send_time=send_time, Text=msg, status='week1_prompt1_sent')
-                c.status = 'week1_prompt1_scheduled'
-
+                    await c.send(send_time=send_time, Text=msg)
+                c.status = 'awaiting_week1_prompt1'
             return WEEK1_PROMPT1
 
 async def week1_prompt1(update, context):
     '''Await responses to scheduled week 1 prompt 1'''
     chat = await initialize_chat_handler(update, context)
-    chat.status = 'awaiting_week1_prompt1'
-    if update.message.text:
-        await chat.send_msg(f"Please send a story response to the above prompt")
+    chat.subdir = 'week1'
+    if update.message.text :
+        if context.job_queue.jobs():
+            await chat.send_msg("Please wait until we send you the next prompt :)")
+        else:
+            await chat.send_msg("Please send a story response to the above prompt")
     else:
-        await get_voicenote(update, context)
         chat.status = 'received_week1_story'
+        await get_voicenote(update, context)
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_story':
             await chat.exchange_vns(paired_chat, status='received_week1_story', Text=f"Your partner has also sent in their story!")

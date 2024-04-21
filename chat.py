@@ -262,7 +262,8 @@ class ChatHandler:
             status = context.job.data['status']
         except AttributeError:
             pass
-        self.status = status
+        if status:
+            self.status = status
         if Text:
             await self.send_msg(Text)
         if VN:
@@ -283,19 +284,19 @@ class ChatHandler:
         # If send_time is None or in the past, send immediately
         if not send_time or now > send_time:
             await self.send_now(VN=VN,Text=Text)
-            self.status = status
+            if status:
+                self.status = status
         else:
             # Otherwise, schedule the send
             await self.schedule(send_time=send_time,VN=VN,Text=Text,status=status)
 
     async def exchange_vns(self, paired_chat, status, Text):
             chat = self
-
             for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
                 query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
-                intro_file = query[0]
-                c.log(f'Trying to send {intro_file}')
-                await c.send(send_time=datetime.now(),VN=intro_file,Text=f'{Text} Here is your message from {oc.first_name}:')
+                file = query[0]
+                c.log(f'Trying to send {file}')
+                await c.send(send_time=datetime.now(),VN=file,Text=f'{Text} Here is your message from {oc.first_name}:')
 
     async def transcribe(self,filename):
         if not TRANSCRIBE:
