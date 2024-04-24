@@ -262,30 +262,31 @@ async def week1_prompt1(update, context):
 async def week1_vt(update, context):
     '''Handle the response for week 1 value tension reflection'''
     chat = await initialize_chat_handler(update, context)
-    chat.subdir = 'week1_vt'
+    chat.subdir = 'received_week1_vt'
     if update.message.voice:
+        chat.status = 'received_week1_vt'
         await get_voicenote(update, context)
         await chat.send_msg(f"Thank you for sending in your second audio reflection, {chat.first_name}!")
         await chat.send_msg("Now that you have reflected on your life and the value tensions therein, you and your Echo partner will both receive each other's stories tomorrow morning.")
         await chat.send_msg("Stay tuned, you will receive continue the Echo journey tomorrow.")
         paired_chat = chat_handlers[chat.paired_chat_id]
-        if paired_chat.status == 'week1_vt':
-            await chat.exchange_vns(paired_chat, status='week1_vt', text=f"Both partners have completed their reflections!")
+        if paired_chat.status == 'received_week1_vt':
             send_time = START_DATE + INTERVAL
-            for c in (chat, paired_chat):
-                c.status = 'day2_complete'
-                await c.send_msg(f"Day 2 complete!")
-            messages = [
-                "Hi there! Your partner and you both have recorded your story and value tension reflections. Time to listen to your partner's audio!",
-                "Here is your partner's initial personal story.",
-                f"audio:{paired_chat.get_story_audio()}",
-                "Here is your partner's value tension reflection on that story.",
-                f"audio:{paired_chat.get_vt_audio()}",
-                "Now, it's important that you listen to these stories as you would to a good friend. Echo is all about 'curious listening', which means that we listen to understand. After having listened to your partner's story and value tension reflection, make sure you try to paraphrase your partner's story in your own words, and ask clarifying questions. That way, your partner will truly feel heard!",
-                "Go ahead and record your 'curious listening' response to your partner's stories when you are ready. Make sure you do so before the end of tomorrow."
-            ]
-            await chat.send_msgs(messages, send_time)
-            chat.status = 'awaiting_curious_listening_response'
+            for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
+                c.status = 'day3_complete'
+                await c.send_msg(f"Your partner has sent in their reflection.")
+                await c.send_msg(f"Day 3 complete!")
+                messages = [
+                    "Hi there! Your partner and you both have recorded your story and value tension reflections. Time to listen to your partner's audio!",
+                    "Here is your partner's initial personal story.",
+                    f"audio:{await oc.get_story_audio()}",
+                    "Here is your partner's value tension reflection on that story.",
+                    f"audio:{await oc.get_vt_audio()}",
+                    "Now, it's important that you listen to these stories as you would to a good friend. Echo is all about 'curious listening', which means that we listen to understand. After having listened to your partner's story and value tension reflection, make sure you try to paraphrase your partner's story in your own words, and ask clarifying questions. That way, your partner will truly feel heard!",
+                    "Go ahead and record your 'curious listening' response to your partner's stories when you are ready. Make sure you do so before the end of tomorrow."
+                ]
+                await c.send_msgs(messages, send_time)
+                c.status = 'awaiting_listening_response'
         else:
             # This needs fixing:
             await chat.send_msg(f"Your partner has not yet completed their reflection. You'll receive it as soon as they do!")

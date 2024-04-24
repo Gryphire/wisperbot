@@ -204,9 +204,13 @@ class ChatHandler:
         await self.send_msg(f"Next prompt will be sent at {send_time}")
         for msg in messages:
             if msg.startswith('img:'):
-                img = msg.split(':')[1]
+                img = ':'.join(msg.split(':')[1:])
                 send_time = send_time + timedelta(seconds=1)
                 await self.send(send_time=send_time, img=img)
+            elif msg.startswith('audio:'):
+                audio = ':'.join(msg.split(':')[1:])
+                send_time = send_time + timedelta(seconds=1)
+                await self.send(send_time=send_time, VN=audio)
             else:
                 send_time = send_time + timedelta(seconds=1)
                 await self.send(send_time=send_time, Text=msg)
@@ -324,12 +328,26 @@ class ChatHandler:
             await self.schedule(send_time=send_time,VN=VN,Text=Text,img=img,status=status)
 
     async def exchange_vns(self, paired_chat, status, Text):
-            chat = self
-            for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
-                query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
-                file = query[0]
-                c.log(f'Trying to send {file}')
-                await c.send(send_time=datetime.now(),VN=file,Text=f'{Text} Here is your message from {oc.first_name}:')
+        chat = self
+        for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
+            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
+            file = query[0]
+            c.log(f'Trying to send {file}')
+            await c.send(send_time=datetime.now(),VN=file,Text=f'{Text} Here is your message from {oc.first_name}:')
+    
+    async def get_story_audio(self):
+        chat = self
+        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='received_week1_story'")
+        file = query[0]
+        chat.log(f'Story audio file is {file}')
+        return file
+    
+    async def get_vt_audio(self):
+        chat = self
+        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='received_week1_vt'")
+        file = query[0]
+        chat.log(f'Value tensions audio file is {file}')
+        return file
 
     async def transcribe(self,filename):
         if not TRANSCRIBE:
