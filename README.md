@@ -19,7 +19,7 @@ TELEGRAM_TOKEN = 'your_telegram_token'
 OPENAI_API_KEY = 'your_openai_key'
 TRANSCRIBE = 'False'
 VIDEO = 'False'
-START_DATE = datetime(2024,4,16,22,22)
+START_DATE = 'datetime(2024,4,16,22,22)'
 INTERVAL = 'timedelta(seconds=120)'
 STARTING_STATUS = 'WEEK1_PROMPT1'
 ```
