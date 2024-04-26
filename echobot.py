@@ -202,7 +202,7 @@ async def awaiting_intro(update, context):
         await get_voicenote(update, context)
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
-            await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+            await chat.send_msg(f"Your partner has not initiated a conversation with me. You'll receive their introduction as soon as I receive it!")
             return WEEK1_PROMPT1
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
@@ -211,7 +211,6 @@ async def awaiting_intro(update, context):
                 await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
             else:
                 await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
-                return WEEK1_PROMPT1
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
