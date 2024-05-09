@@ -295,8 +295,14 @@ class ChatHandler:
             Text = context.job.data['Text']
             img = context.job.data['img']
             status = context.job.data['status']
+            scheduled_time = context.job.data['scheduled_time']
+            # Check if the current time is significantly past the scheduled time
+            now = datetime.now()
+            if scheduled_time and (now - scheduled_time).total_seconds() > 5:
+                self.log(f"Missed scheduled time by {(now - scheduled_time).total_seconds()} seconds. Sending now.")
         except AttributeError:
             pass
+
         if status:
             self.status = status
         if Text:
@@ -313,7 +319,8 @@ class ChatHandler:
         self.context.job_queue.run_once(
             self.send_now,
             delay,
-            data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status}
+            data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status, 'scheduled_time': send_time},
+            misfire_grace_time=300
         )
     
     async def send(self, send_time=None, VN=None, Text=None, img=None, status=None):
