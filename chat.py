@@ -220,7 +220,7 @@ class ChatHandler:
         if VIDEO:
             while True:
                 try:
-                    await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
+                    await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. ����👍🏻", has_spoiler=True, width=1280, height=720)
                     self.log_send_video(FN)
                     break
                 except TimedOut:
@@ -312,7 +312,7 @@ class ChatHandler:
         if img:
             await self.send_img(img)
     
-    async def schedule(self, send_time, VN, Text, img, status):
+    async def schedule(self, send_time, VN, Text, img, status, misfire_grace_time=None):
         self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
         now = datetime.now()
         delay = (send_time - now).total_seconds()
@@ -320,7 +320,7 @@ class ChatHandler:
             self.send_now,
             delay,
             data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status, 'scheduled_time': send_time},
-            misfire_grace_time=300
+            job_kwargs={'misfire_grace_time': misfire_grace_time}
         )
     
     async def send(self, send_time=None, VN=None, Text=None, img=None, status=None):
