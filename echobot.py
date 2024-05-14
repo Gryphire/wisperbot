@@ -178,14 +178,14 @@ async def tut_story2(update, context):
     else:
         chat.status = 'tut_story2responded'
         await get_voicenote(update, context)
-        await chat.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter Wisper, where you will also be able to listen to other people stories, and send them a one-time active listening response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of Wisper!""")
+        await chat.send_msg("""Exciting! You've listened to all the tutorial stories I've got for you!\n\nTime to enter the main EchoBot experience, where you will also be able to listen to other people stories, and send them a one-time 'curious listening' response about the values they seem to balance.\n\nAdditionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.\n\nUse the /endtutorial command to enter the world of EchoBot!""")
         return TUT_COMPLETED
 
 async def tut_completed(update, context):
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/endtutorial':
         chat.status = 'tut_completed'
-        await chat.send_msg(f"Please send a voicenote introducing yourself to your partner!")
+        await chat.send_msg(f"Now that the tutorial part of EchoBot has been completed, we think it's nice for both you and your partner to introduce yourselves shortly to one another.\n\nFeel free to include your first name if you want to, but you are not required to do so.\n\nPlease send a voicenote introducing yourself to your partner today. Once both you and your partner have done so, you will be able to continue on to the main EchoBot experience tomorrow.")
         chat.subdir = 'intros'
         chat.status = 'awaiting_intro'
         return AWAITING_INTRO
@@ -224,7 +224,7 @@ async def awaiting_intro(update, context):
                     "Take your time to think about this prompt, and submit your audio when you are ready. Don't worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
                     "Make sure you send in your story today, your partner will be doing the same."
                 ]
-                await c.send_msgs(messages, send_time)
+                #await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_prompt1'
             return WEEK1_PROMPT1
 
@@ -241,23 +241,23 @@ async def week1_prompt1(update, context):
         chat.status = 'received_week1_story'
         await get_voicenote(update, context)
         await chat.send_msg(f"Thank you for submitting your audio story, {chat.first_name}! Your story has been saved, but will not yet be sent to your partner. Before that happens, you will be asked to complete one more part tomorrow.")
-        await chat.send_msg("Stay tuned, you will receive continue the Echo journey tomorrow.")
+        await chat.send_msg("Stay tuned, you will continue the Echo journey tomorrow morning and receive further instructions then!")
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_story':
-            send_time = START_DATE + INTERVAL
+            send_time = START_DATE + (INTERVAL  * 2)
             for c in (chat,paired_chat):
                 c.status = 'day2_complete'
-                await c.send_msg(f"Day 2 complete!")
+                await c.send_msg(f"Hi there! Your partner has now also completed their part of today's assignment.")
                 messages = [
                     "Welcome back! Yesterday you recorded a personal story. Today, we would like you to listen to your own story, and think about whether and how you have had to balance between different values. This balancing is what we call 'value tensions'.",
                     "Here are some examples of value tensions.",
                     'img:vt.png',
                     "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on **one or two** of the following value tensions, and send this to your Echo partner in an audio message. Note that you do not need to cover all of these tension; just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
                 ]
-                await c.send_msgs(messages, send_time)
+                #await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_vt'
         else:
-            await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
+            #await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
         return WEEK1_VT
 
 async def week1_vt(update, context):
@@ -266,16 +266,16 @@ async def week1_vt(update, context):
     if update.message.voice:
         chat.status = 'received_week1_vt'
         await get_voicenote(update, context)
-        await chat.send_msg(f"Thank you for sending in your second audio reflection, {chat.first_name}!")
+        await chat.send_msg(f"Thank you for sending in your value tension reflection, {chat.first_name}!")
         await chat.send_msg("Now that you have reflected on your life and the value tensions therein, you and your Echo partner will both receive each other's stories tomorrow morning.")
-        await chat.send_msg("Stay tuned, you will receive continue the Echo journey tomorrow.")
+        await chat.send_msg("Stay tuned, you will continue the Echo journey in the coming days.")
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_vt':
-            send_time = START_DATE + INTERVAL
+            send_time = START_DATE + (INTERVAL * 3)
             for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
                 c.status = 'day3_complete'
-                await c.send_msg(f"Your partner has sent in their reflection.")
-                await c.send_msg(f"Day 3 complete!")
+                await c.send_msg(f"Hi there. Just a heads up that your partner has now also sent in their reflection. Stay tuned for the next steps tomorrow!")
+                #await c.send_msg(f"Day 3 complete!")
                 messages = [
                     "Hi there! Your partner and you both have recorded your story and value tension reflections. Time to listen to your partner's audio!",
                     "Here is your partner's initial personal story.",
@@ -285,10 +285,10 @@ async def week1_vt(update, context):
                     "Now, it's important that you listen to these stories as you would to a good friend. Echo is all about 'curious listening', which means that we listen to understand. After having listened to your partner's story and value tension reflection, make sure you try to paraphrase your partner's story in your own words, and ask clarifying questions. That way, your partner will truly feel heard!",
                     "Go ahead and record your 'curious listening' response to your partner's stories when you are ready. Make sure you do so before the end of tomorrow."
                 ]
-                await c.send_msgs(messages, send_time)
+                #await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_listening_response'
         else:
-            await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
+            #await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
         return WEEK1_PS
     else:
         await chat.send_msg("Please send a voice note response to the value tension reflection prompt.")
@@ -299,22 +299,22 @@ async def week1_ps(update, context):
         chat.status = 'received_week1_ps'
         await get_voicenote(update, context)
         paired_chat = chat_handlers[chat.paired_chat_id]
-        await chat.send_msg(f"Thank you for recording your response! I'm sure that your partner {paired_chat.first_name if paired_chat.first_name else ''} will be grateful to hear your perspective!")
-        await chat.send_msg("Stay tuned and keep an eye out for next steps from me, because you will continue the Echo journey tomorrow.")
+        await chat.send_msg(f"Thank you for recording your response! I'm sure that your partner {paired_chat.first_name if paired_chat.first_name else ''} will be grateful to hear your attentive perspective!")
+        await chat.send_msg("Stay tuned and keep an eye out for next steps from me in the coming days!")
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_ps':
-            send_time = START_DATE + INTERVAL
+            send_time = START_DATE + (INTERVAL  * 5)
             for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
                 c.status = 'day4_complete'
-                await c.send_msg(f"Your partner has sent in their 'curious listening' response.")
-                await c.send_msg(f"Day 4 complete!")
+                await c.send_msg(f"Hi! Just a heads up; your partner has also sent in their 'curious listening' response.")
+                #await c.send_msg(f"Day 4 complete!")
                 messages = [
                     "Hi there! Yesterday you responded to your partner's stories and lent them your 'curious listening' ear! In the meantime, your partner has also listened to your audio messages. Time to take a listen!",
                     f"audio:{await oc.get_audio('received_week1_ps')}",
                     "When you have listened to their perspective, take a moment to think about your partner's audio message. Do you agree with them? Does their take on your voice messages change anything about how you view your own story?",
                     "Take a moment to reflect on your partner's response and record a final response for them. You might thank them for listening to your stories, or for providing an interesting new perspective. Feel free to share your thoughts and exchange feelings. Your partner will be doing the same for you. Go ahead and record your final reaction when you are ready."
                 ]
-                await c.send_msgs(messages, send_time)
+                #await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_feedback'
         else:
             await chat.send_msg(f"Your partner has not yet sent their 'curious listening' response. I'll let you know as soon as they do!")
@@ -330,14 +330,14 @@ async def week1_feedback(update, context):
         await chat.send_msg(f"Thanks for sharing that final reflection, {chat.first_name}! You will both receive your final reflections when you have both completed this step.")
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == 'received_week1_feedback':
-            send_time = START_DATE + INTERVAL
+            send_time = START_DATE + (INTERVAL * 6)
             for c in (chat, paired_chat):
                 c.status = 'week1_complete'
                 messages = [
                     "Wonderful, your partner has submitted their final response as well, which means that you can listen to it right now!",
-                    "This marks the end of Week 1 of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps on Monday."
+                    "This marks the end of Week 1 of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps."
                 ]
-                await c.send_msgs(messages, send_time)
+                #await c.send_msgs(messages, send_time)
         else:
             await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive it as soon as they do!")
         return END
