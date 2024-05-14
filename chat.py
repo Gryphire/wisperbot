@@ -1,6 +1,6 @@
 ###---------LIBRARY IMPORTS---------###
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 import dotenv
 import logging
 import os
@@ -110,14 +110,22 @@ class ChatHandler:
         except FileNotFoundError:
             self.number = None
         self.logger = self.get_logger()# Set the paired user during initialization
-        self.set_paired_user()  
 
-    def set_paired_user(self):
+    def set_paired_user(self, chat_handlers):
         '''Set the paired user based on the chat's username'''
         self.paired_user = user_pairs.get(self.name, None)
         self.log(f'Paired user set to {self.paired_user}')
         self.paired_chat_id = name_to_chat_id.get(self.paired_user, None)
-        self.log(f'Paired user is {self.paired_chat_id}')
+        self.log(f'Paired user id is {self.paired_chat_id}')
+        try:
+            chat = chat_handlers[self.paired_chat_id]
+            chat.paired_user = self.name
+            chat.log(f'Paired user set to {self.name}')
+            chat.paired_chat_id = self.chat_id
+            chat.log(f'Paired user id is {self.chat_id}')
+        except KeyError:
+            self.log(f'Paired chat id not yet found: {self.paired_user}')
+            pass
 
     @property
     def status(self):
@@ -191,10 +199,55 @@ class ChatHandler:
 
                 # Wait a few seconds before retrying
                 await asyncio.sleep(5)
+    
+    async def send_msgs(self, messages, send_time):
+        await self.send_msg(f"Next prompt will be sent at {send_time}")
+        for msg in messages:
+            if msg.startswith('img:'):
+                img = ':'.join(msg.split(':')[1:])
+                send_time = send_time + timedelta(seconds=1)
+                await self.send(send_time=send_time, img=img)
+            elif msg.startswith('audio:'):
+                audio = ':'.join(msg.split(':')[1:])
+                send_time = send_time + timedelta(seconds=1)
+                await self.send(send_time=send_time, VN=audio)
+            else:
+                send_time = send_time + timedelta(seconds=1)
+                await self.send(send_time=send_time, Text=msg)
 
     async def send_video(self,FN):
+        '''Send a video file, try infinitely'''
         if VIDEO:
-            await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
+            while True:
+                try:
+                    await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. ����👍🏻", has_spoiler=True, width=1280, height=720)
+                    self.log_send_video(FN)
+                    break
+                except TimedOut:
+                    self.logger.warning("Request timed out, retrying...")
+                    await asyncio.sleep(5)
+    
+    async def send_vn(self, VN):
+        '''Send a voicenote file, try infinitely'''
+        while True:
+            try:
+                await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
+                self.log_send_vn(VN)
+                break
+            except TimedOut:
+                self.logger.warning("Request timed out, retrying...")
+                await asyncio.sleep(5)
+
+    async def send_img(self, img):
+        '''Send an image file, try infinitely'''
+        while True:
+            try:
+                await self.context.bot.send_photo(chat_id=self.chat_id, photo=img)
+                self.log_send_img(img)
+                break
+            except TimedOut:
+                self.logger.warning("Request timed out, retrying...")
+                await asyncio.sleep(5)
 
     def log_event(self, sender='', recver='', recv_id='', event='', filename=''):
         c.execute("INSERT INTO logs VALUES (?,?,?,?,?,?,?,?)", 
@@ -220,12 +273,82 @@ class ChatHandler:
         self.log(f"Downloaded voicenote as {filename}")
         self.log_event(sender=self.name,recver='bot',event='recv_vn',filename=filename)
 
-    async def send_vn(self,VN):
-        '''Send a voicenote file'''
-        self.log_event(sender='bot',recver=self.name,recv_id='',event='send_vn',filename=VN)
-        self.sent.append(VN)
-        await self.context.bot.send_voice(chat_id=self.chat_id, voice=VN)
-        self.log(f'Sent {VN}')
+    def log_send_vn(self, filename):
+        self.log(f"Sent voicenote {filename}")
+        self.log_event(sender='bot',recver=self.name,event='send_vn',filename=filename)
+    
+    def log_send_img(self, filename):
+        self.log(f"Sent image {filename}")
+        self.log_event(sender='bot',recver=self.name,event='send_img',filename=filename)
+    
+    def log_send_video(self, filename):
+        self.log(f"Sent video {filename}")
+        self.log_event(sender='bot',recver=self.name,event='send_video',filename=filename)
+
+    # I think we should have function send(send_time, VN, TEXT)
+    # this will call either send_msg or send_vn
+    async def send_now(self, context=None, VN=None, Text=None, img=None, status=None):
+        '''Send a voicenote file or message, either scheduled or now'''
+        try:
+            update = context.job.data['update']
+            VN = context.job.data['VN']
+            Text = context.job.data['Text']
+            img = context.job.data['img']
+            status = context.job.data['status']
+            scheduled_time = context.job.data['scheduled_time']
+            # Check if the current time is significantly past the scheduled time
+            now = datetime.now()
+            if scheduled_time and (now - scheduled_time).total_seconds() > 5:
+                self.log(f"Missed scheduled time by {(now - scheduled_time).total_seconds()} seconds. Sending now.")
+        except AttributeError:
+            pass
+
+        if status:
+            self.status = status
+        if Text:
+            await self.send_msg(Text)
+        if VN:
+            await self.send_vn(VN)
+        if img:
+            await self.send_img(img)
+    
+    async def schedule(self, send_time, VN, Text, img, status, misfire_grace_time=None):
+        self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
+        now = datetime.now()
+        delay = (send_time - now).total_seconds()
+        self.context.job_queue.run_once(
+            self.send_now,
+            delay,
+            data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status, 'scheduled_time': send_time},
+            job_kwargs={'misfire_grace_time': misfire_grace_time}
+        )
+    
+    async def send(self, send_time=None, VN=None, Text=None, img=None, status=None):
+        now = datetime.now()
+        # If send_time is None or in the past, send immediately
+        if not send_time or now > send_time:
+            await self.send_now(VN=VN,Text=Text,img=img)
+            if status:
+                self.status = status
+        else:
+            # Otherwise, schedule the send
+            await self.schedule(send_time=send_time,VN=VN,Text=Text,img=img,status=status)
+
+    async def exchange_vns(self, paired_chat, status, Text):
+        chat = self
+        for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
+            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
+            file = query[0]
+            c.log(f'Trying to send {file}')
+            await c.send(send_time=datetime.now(),VN=file,Text=f'{Text} Here is your message from {oc.first_name}:')
+    
+    async def get_audio(self,status):
+        chat = self
+        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='{status}'")
+        file = query[0]
+        chat.log(f'{status} audio file is {file}')
+        return file
+   
 
     async def transcribe(self,filename):
         if not TRANSCRIBE:
