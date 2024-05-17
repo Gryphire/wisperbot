@@ -257,7 +257,7 @@ async def week1_prompt1(update, context):
                 #await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_vt'
         else:
-            #await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
+            await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
         return WEEK1_VT
 
 async def week1_vt(update, context):
