@@ -288,7 +288,7 @@ async def week1_vt(update, context):
                 #await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_listening_response'
         else:
-            #await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
+            await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
         return WEEK1_PS
     else:
         await chat.send_msg("Please send a voice note response to the value tension reflection prompt.")
