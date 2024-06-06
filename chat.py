@@ -337,14 +337,14 @@ class ChatHandler:
     async def exchange_vns(self, paired_chat, status, Text):
         chat = self
         for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
-            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}'")
+            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}' ORDER BY timestamp DESC LIMIT 1")
             file = query[0]
             c.log(f'Trying to send {file}')
             await c.send(send_time=datetime.now(),VN=file,Text=f'{Text} Here is your message from {oc.first_name}:')
     
     async def get_audio(self,status):
         chat = self
-        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='{status}'")
+        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='{status}' ORDER BY timestamp DESC LIMIT 1")
         file = query[0]
         chat.log(f'{status} audio file is {file}')
         return file
