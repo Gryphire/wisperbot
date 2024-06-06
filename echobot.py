@@ -363,9 +363,9 @@ async def handle_feedback(update, context):
                 ]
                 c.status = f'awaiting_week{chat.week}_prompt'
                 await c.send_msgs(messages, send_time)
-            return WEEK2_PROMPT
         else:
             await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive it as soon as they do!")
+        return WEEK2_PROMPT
     else:
         await chat.send_msg("Please send a voice note with your feedback on this week's Echo experience.")
 
