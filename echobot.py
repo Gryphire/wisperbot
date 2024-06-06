@@ -30,6 +30,7 @@ try:
 except TypeError:
     INTERVAL = timedelta(hours=24)
 
+ORIGINAL_START_DATE = START_DATE
 print(f'START_DATE is {START_DATE} and one "day" is {INTERVAL}')
 
 ###---------CONVERSATION HANDLER SETUP---------###
@@ -39,10 +40,15 @@ states = ['START_WELCOMED',
 'TUT_STORY2',
 'TUT_COMPLETED',
 'AWAITING_INTRO',
-'WEEK1_PROMPT1',
+'WEEK1_PROMPT',
 'WEEK1_VT',
 'WEEK1_PS',
-'WEEK1_FEEDBACK']
+'WEEK1_FEEDBACK',
+'WEEK2_PROMPT',
+'WEEK2_VT',
+'WEEK2_PS',
+'WEEK2_FEEDBACK']
+
 END = ConversationHandler.END
 states_range = range(len(states))
 
@@ -114,6 +120,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return END
     bot = chat.context.bot
     chat.log_recv_text('/start command')
+    chat.week = 1
     if STARTING_STATUS:
         chat.log(f'Skipping to {STARTING_STATUS}')
         await chat.send_msg(f'Based on bot\'s .env file, skipping to {STARTING_STATUS}', parse_mode=ParseMode.HTML)
@@ -150,7 +157,7 @@ async def get_tutorial_story(update, context):
         await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
         await chat.send_vn(VN=f'tutorialstories/{tutorial_files[0]}')
         await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Echobot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
-        chat.status = f'tut_story1received'
+        chat.status = f'tut_story{chat.week}received'
         chat.log_recv_text('Received /gettutorialstory')
         return TUT_STORY1
     else:
@@ -164,7 +171,7 @@ async def tut_story1(update, context):
         await chat.send_msg("Please send a voicenote response 😊")
     else:
         await get_voicenote(update, context)
-        chat.status = 'tut_story1responded'
+        chat.status = f'tut_story{chat.week}responded'
         await chat.send_msg(f"Here's the second tutorial story for you to listen to, from someone else:")
         await chat.send_vn(VN=f'tutorialstories/{tutorial_files[1]}')
         await chat.send_msg(f"""Again, have a think about which values seem embedded in this person's story. When you're ready to record your response, go ahead!""")
@@ -203,7 +210,7 @@ async def awaiting_intro(update, context):
         # Check the database to see if the other user has sent in their introduction
         if not chat.paired_chat_id:
             await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
-            return WEEK1_PROMPT1
+            return WEEK1_PROMPT
         else:
             paired_chat = chat_handlers[chat.paired_chat_id]
 
@@ -211,7 +218,7 @@ async def awaiting_intro(update, context):
                 await chat.exchange_vns(paired_chat, status='received_intro', Text=f"Your partner has also sent in their introduction!")
             else:
                 await chat.send_msg(f"Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
-                return WEEK1_PROMPT1
+                return WEEK1_PROMPT
 
             send_time = START_DATE + INTERVAL
             for c in (chat,paired_chat):
@@ -225,28 +232,29 @@ async def awaiting_intro(update, context):
                     "Make sure you send in your story today, your partner will be doing the same."
                 ]
                 await c.send_msgs(messages, send_time)
-                c.status = 'awaiting_week1_prompt1'
-            return WEEK1_PROMPT1
+                c.status = f'awaiting_week{chat.week}_prompt'
+            return WEEK1_PROMPT
 
-async def week1_prompt1(update, context):
+async def handle_prompt(update, context):
     '''Await responses to scheduled week 1 prompt 1'''
     chat = await initialize_chat_handler(update, context)
-    chat.subdir = 'week1'
+    chat.subdir = f'week{chat.week}'
     if update.message.text :
         if context.job_queue.jobs():
             await chat.send_msg("Please wait until we send you the next prompt :)")
         else:
             await chat.send_msg("Please send a story response to the above prompt")
     else:
-        chat.status = 'received_week1_story'
+        chat.status = f'received_week{chat.week}_story'
         await get_voicenote(update, context)
         await chat.send_msg(f"Thank you for submitting your audio story, {chat.first_name}! Your story has been saved, but will not yet be sent to your partner. Before that happens, you will be asked to complete one more part tomorrow.")
         await chat.send_msg("Stay tuned, you will continue the Echo journey tomorrow morning and receive further instructions then!")
         paired_chat = chat_handlers[chat.paired_chat_id]
-        if paired_chat.status == 'received_week1_story':
+        print(paired_chat.status)
+        if paired_chat.status == f'received_week{chat.week}_story':
             send_time = START_DATE + (INTERVAL  * 2)
             for c in (chat,paired_chat):
-                c.status = 'day2_complete'
+                c.status = f'week{chat.week}_day2_complete'
                 await c.send_msg(f"Hi there! Your partner has now also completed their part of today's assignment.")
                 messages = [
                     "Welcome back! Yesterday you recorded a personal story. Today, we would like you to listen to your own story, and think about whether and how you have had to balance between different values. This balancing is what we call 'value tensions'.",
@@ -255,22 +263,22 @@ async def week1_prompt1(update, context):
                     "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on **one or two** of the following value tensions, and send this to your Echo partner in an audio message. Note that you do not need to cover all of these tension; just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
                 ]
                 await c.send_msgs(messages, send_time)
-                c.status = 'awaiting_week1_vt'
+                c.status = f'awaiting_week{chat.week}_vt'
         else:
             await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
         return WEEK1_VT
 
-async def week1_vt(update, context):
+async def handle_vt(update, context):
     '''Handle the response for week 1 value tension reflection'''
     chat = await initialize_chat_handler(update, context)
     if update.message.voice:
-        chat.status = 'received_week1_vt'
+        chat.status = f'received_week{chat.week}_vt'
         await get_voicenote(update, context)
         await chat.send_msg(f"Thank you for sending in your value tension reflection, {chat.first_name}!")
         await chat.send_msg("Now that you have reflected on your life and the value tensions therein, you and your Echo partner will both receive each other's stories tomorrow morning.")
         await chat.send_msg("Stay tuned, you will continue the Echo journey in the coming days.")
         paired_chat = chat_handlers[chat.paired_chat_id]
-        if paired_chat.status == 'received_week1_vt':
+        if paired_chat.status == f'received_week{chat.week}_vt':
             send_time = START_DATE + (INTERVAL * 3)
             for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
                 c.status = 'day3_complete'
@@ -293,16 +301,16 @@ async def week1_vt(update, context):
     else:
         await chat.send_msg("Please send a voice note response to the value tension reflection prompt.")
 
-async def week1_ps(update, context):
+async def handle_ps(update, context):
     chat = await initialize_chat_handler(update, context)#
     if update.message.voice:
-        chat.status = 'received_week1_ps'
+        chat.status = f'received_week{chat.week}_ps'
         await get_voicenote(update, context)
         paired_chat = chat_handlers[chat.paired_chat_id]
         await chat.send_msg(f"Thank you for recording your response! I'm sure that your partner {paired_chat.first_name if paired_chat.first_name else ''} will be grateful to hear your attentive perspective!")
         await chat.send_msg("Stay tuned and keep an eye out for next steps from me in the coming days!")
         paired_chat = chat_handlers[chat.paired_chat_id]
-        if paired_chat.status == 'received_week1_ps':
+        if paired_chat.status == f'received_week{chat.week}_ps':
             send_time = START_DATE + (INTERVAL  * 5)
             for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
                 c.status = 'day4_complete'
@@ -322,25 +330,42 @@ async def week1_ps(update, context):
     else:
         await chat.send_msg("Please send a voice note 'curious listening response' to your partner's stories.")
 
-async def week1_feedback(update, context):
+async def handle_feedback(update, context):
+    global START_DATE
     chat = await initialize_chat_handler(update, context)
     if update.message.voice:
-        chat.status = 'received_week1_feedback'
+        chat.status = f'received_week{chat.week}_feedback'
         await get_voicenote(update, context)
         await chat.send_msg(f"Thanks for sharing that final reflection, {chat.first_name}! You will both receive your final reflections when you have both completed this step.")
         paired_chat = chat_handlers[chat.paired_chat_id]
-        if paired_chat.status == 'received_week1_feedback':
+        if paired_chat.status == f'received_week{chat.week}_feedback':
             send_time = START_DATE + (INTERVAL * 6)
-            for c in (chat, paired_chat):
+            for c, oc in [(chat, paired_chat),(paired_chat, chat)]:
                 c.status = 'week1_complete'
                 messages = [
                     "Wonderful, your partner has submitted their final response as well, which means that you can listen to it right now!",
-                    "This marks the end of Week 1 of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps."
+                    f"audio:{await oc.get_audio('received_week1_feedback')}",
+                    f"This marks the end of Week {chat.week} of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps."
                 ]
                 await c.send_msgs(messages, send_time)
+            if chat.week == 2:
+                return END
+            if START_DATE == ORIGINAL_START_DATE: # Bit hacky
+                START_DATE = START_DATE + INTERVAL * 7
+            send_time = START_DATE
+            for c, oc in [(chat, paired_chat),(paired_chat, chat)]:
+                c.week = 2
+                messages = [
+                    "Welcome to week two of the Echo experience!",
+                    "Your personal story prompt for this week is 'What was an experience in your life where you had to handle a complex situation?'",
+                    "Take your time to think about this prompt, and submit your audio when you are ready. Don’t worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
+                    "Make sure you send in your story today, your partner will be doing the same."
+                ]
+                c.status = f'awaiting_week{chat.week}_prompt'
+                await c.send_msgs(messages, send_time)
+            return WEEK2_PROMPT
         else:
             await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive it as soon as they do!")
-        return END
     else:
         await chat.send_msg("Please send a voice note with your feedback on this week's Echo experience.")
 
@@ -366,20 +391,17 @@ if __name__ == '__main__':
             TUT_STORY2: [MessageHandler(filters.TEXT | filters.VOICE, tut_story2)],
             TUT_COMPLETED: [MessageHandler(filters.TEXT, tut_completed)],
             AWAITING_INTRO: [MessageHandler(filters.TEXT | filters.VOICE, awaiting_intro)],
-            WEEK1_PROMPT1: [MessageHandler(filters.TEXT | filters.VOICE, week1_prompt1)],
-            WEEK1_VT: [MessageHandler(filters.TEXT | filters.VOICE, week1_vt)],
-            WEEK1_PS: [MessageHandler(filters.TEXT | filters.VOICE, week1_ps)],
-            WEEK1_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, week1_feedback)]
+            WEEK1_PROMPT: [MessageHandler(filters.TEXT | filters.VOICE, handle_prompt)],
+            WEEK1_VT: [MessageHandler(filters.TEXT | filters.VOICE, handle_vt)],
+            WEEK1_PS: [MessageHandler(filters.TEXT | filters.VOICE, handle_ps)],
+            WEEK1_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, handle_feedback)],
+            WEEK2_PROMPT: [MessageHandler(filters.TEXT | filters.VOICE, handle_prompt)],
+            WEEK2_VT: [MessageHandler(filters.TEXT | filters.VOICE, handle_vt)],
+            WEEK2_PS: [MessageHandler(filters.TEXT | filters.VOICE, handle_ps)],
+            WEEK2_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, handle_feedback)]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-    #week1_handler = ConversationHandler(
-        #entry_points=[CommandHandler('week1', week1)],
-        #states={
-            #WEEK1_PROMPT1: [MessageHandler(filters.VOICE, week1_prompt1)],
-        #},
-        #fallbacks=[CommandHandler('cancel', cancel)]
-    #)
 
     application = ApplicationBuilder().token(TOKEN).build()
 
