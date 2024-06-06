@@ -224,7 +224,7 @@ async def awaiting_intro(update, context):
                     "Take your time to think about this prompt, and submit your audio when you are ready. Don't worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
                     "Make sure you send in your story today, your partner will be doing the same."
                 ]
-                #await c.send_msgs(messages, send_time)
+                await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_prompt1'
             return WEEK1_PROMPT1
 
@@ -254,10 +254,10 @@ async def week1_prompt1(update, context):
                     'img:vt.png',
                     "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on **one or two** of the following value tensions, and send this to your Echo partner in an audio message. Note that you do not need to cover all of these tension; just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
                 ]
-                #await c.send_msgs(messages, send_time)
+                await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_vt'
         else:
-            #await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
+            await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
         return WEEK1_VT
 
 async def week1_vt(update, context):
@@ -285,10 +285,10 @@ async def week1_vt(update, context):
                     "Now, it's important that you listen to these stories as you would to a good friend. Echo is all about 'curious listening', which means that we listen to understand. After having listened to your partner's story and value tension reflection, make sure you try to paraphrase your partner's story in your own words, and ask clarifying questions. That way, your partner will truly feel heard!",
                     "Go ahead and record your 'curious listening' response to your partner's stories when you are ready. Make sure you do so before the end of tomorrow."
                 ]
-                #await c.send_msgs(messages, send_time)
+                await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_listening_response'
         else:
-            #await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
+            await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
         return WEEK1_PS
     else:
         await chat.send_msg("Please send a voice note response to the value tension reflection prompt.")
@@ -314,7 +314,7 @@ async def week1_ps(update, context):
                     "When you have listened to their perspective, take a moment to think about your partner's audio message. Do you agree with them? Does their take on your voice messages change anything about how you view your own story?",
                     "Take a moment to reflect on your partner's response and record a final response for them. You might thank them for listening to your stories, or for providing an interesting new perspective. Feel free to share your thoughts and exchange feelings. Your partner will be doing the same for you. Go ahead and record your final reaction when you are ready."
                 ]
-                #await c.send_msgs(messages, send_time)
+                await c.send_msgs(messages, send_time)
                 c.status = 'awaiting_week1_feedback'
         else:
             await chat.send_msg(f"Your partner has not yet sent their 'curious listening' response. I'll let you know as soon as they do!")
@@ -337,7 +337,7 @@ async def week1_feedback(update, context):
                     "Wonderful, your partner has submitted their final response as well, which means that you can listen to it right now!",
                     "This marks the end of Week 1 of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps."
                 ]
-                #await c.send_msgs(messages, send_time)
+                await c.send_msgs(messages, send_time)
         else:
             await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive it as soon as they do!")
         return END
