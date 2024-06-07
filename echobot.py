@@ -95,7 +95,7 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
     # But probably better to get the timestamp of the message:
     ts = update.message.date.strftime("%Y%m%d-%H:%M")
     # download the voice note as a file
-    filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{new_file.file_unique_id}.ogg"
+    filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{chat.status}.ogg"
     filepath = os.path.join(path, filename)
     await new_file.download_to_drive(filepath)
     await chat.send_msg(f"Thank you for recording your response, {chat.first_name}!")
