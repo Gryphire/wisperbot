@@ -83,7 +83,7 @@ logging.info(f"OpenAI transcription is {'on' if TRANSCRIBE else 'off'}, video is
 
 ###---------SETTING UP CHATHANDLER CLASS---------###
 class ChatHandler:
-    def __init__(self, chat_id, update=None, context=None):
+    def __init__(self, chat_id, update=None, context=None, start_date=None):
         if not update.message or not context:
             missing = "update.message" if not update.message else "context"
             logging.error(f'Received an update without {missing} defined: {update}')
@@ -91,6 +91,8 @@ class ChatHandler:
         self.chat_id = chat_id
         self.chat_type = update.message.chat.type
         self.context = context
+        self.start_date = datetime.fromisoformat(start_date) if isinstance(start_date, str) else start_date
+        self.sqlite_date = self.start_date.strftime("%Y-%m-%d %H:%M:%S")
         self.sent = []
         # When chat first starts, the user will be in tutorial mode
         self._status = 'none'
@@ -220,7 +222,7 @@ class ChatHandler:
         if VIDEO:
             while True:
                 try:
-                    await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. ����👍🏻", has_spoiler=True, width=1280, height=720)
+                    await self.context.bot.send_video(chat_id=self.chat_id, video=open(FN, 'rb'), caption="Click to start, and make sure your sound is on. 🔊👍🏻", has_spoiler=True, width=1280, height=720)
                     self.log_send_video(FN)
                     break
                 except TimedOut:
@@ -336,18 +338,34 @@ class ChatHandler:
 
     async def exchange_vns(self, paired_chat, status, Text):
         chat = self
-        for c, oc in [(chat,paired_chat),(paired_chat,chat)]:
-            query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{oc.chat_id}' and event='recv_vn' AND status='{status}' ORDER BY timestamp DESC LIMIT 1")
-            file = query[0]
-            c.log(f'Trying to send {file}')
-            await c.send(send_time=datetime.now(),VN=file,Text=f'{Text} Here is your message from {oc.first_name}:')
+        for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
+            query = await c.sqlquery(f"""
+                SELECT filename 
+                FROM logs 
+                WHERE chat_id = '{oc.chat_id}' 
+                AND event = 'recv_vn' 
+                AND status = '{status}' 
+                AND datetime(timestamp) >= '{self.sqlite_date}'
+                ORDER BY timestamp ASC
+            """)
+            
+            if query:
+                for row in query:
+                    file = row[0]
+                    c.log(f'Trying to send {file}')
+                    await c.send(send_time=datetime.now(), VN=file, Text=f'{Text} Here is your message from {oc.first_name}:')
+            else:
+                c.log(f'No voice notes found for chat_id {oc.chat_id} with status {status}')
     
-    async def get_audio(self,status):
+    async def get_audio(self, status):
         chat = self
-        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' and event='recv_vn' AND status='{status}' ORDER BY timestamp DESC LIMIT 1")
-        file = query[0]
-        chat.log(f'{status} audio file is {file}')
-        return file
+        files = []
+        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' AND event='recv_vn' AND status='{status}' AND datetime(timestamp) >= '{chat.sqlite_date}' ORDER BY timestamp DESC")
+        for row in query:
+            file = row[0]
+            chat.log(f'{status} audio file is {file}')
+            files.append(file)
+        return files
    
 
     async def transcribe(self,filename):
@@ -371,13 +389,13 @@ class ChatHandler:
         #cmd = f'rclone copy --drive-shared-with-me -P 00_Participants bryankam8@gmail.com:"04_AUDIO PROTOTYPE_June 2023/00_Participants"'
         #subprocess.check_output(cmd, shell=True)
 
-    async def sqlquery(self,cmd,fetchall=False):
+    async def sqlquery(self,cmd,fetchall=True):  # Changed default to True
         c.execute(cmd)
         if fetchall:
             result = c.fetchall()
         else:
             result = c.fetchone()
-        return result
+        return result or []  # Return an empty list if result is None
 
 # Function to dump the logs to a CSV file
 def dump_logs_to_csv():

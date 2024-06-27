@@ -78,7 +78,7 @@ tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.startsw
 async def initialize_chat_handler(update,context=None):
     chat_id = update.effective_chat.id
     if chat_id not in chat_handlers:
-        chat_handlers[chat_id] = ChatHandler(chat_id,update,context)
+        chat_handlers[chat_id] = ChatHandler(chat_id, update, context, START_DATE)
         chat = chat_handlers[chat_id]
     chat = chat_handlers[chat_id]
     chat.update = update
@@ -95,7 +95,7 @@ async def get_voicenote(update: Update, context: CallbackContext) -> None:
     # But probably better to get the timestamp of the message:
     ts = update.message.date.strftime("%Y%m%d-%H:%M")
     # download the voice note as a file
-    filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{chat.status}.ogg"
+    filename = f"{ts}-{update.message.from_user.first_name}-{chat.chat_id}-{chat.status}-{new_file.file_unique_id}.ogg"
     filepath = os.path.join(path, filename)
     await new_file.download_to_drive(filepath)
     transcript = await chat.transcribe(filepath)
@@ -216,10 +216,11 @@ async def awaiting_intro(update, context):
     next_state = await handle_voice_or_text(update, context, chat, AWAITING_INTRO, done_message, WEEK1_PROMPT)
 
     if next_state == WEEK1_PROMPT:
+        chat.status = 'received_intro'
         if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id in chat_handlers:
             paired_chat = chat_handlers[chat.paired_chat_id]
             if paired_chat.status == 'received_intro':
-                await chat.exchange_vns(paired_chat, status='received_intro', Text="Your partner has also sent in their introduction!")
+                await chat.exchange_vns(paired_chat, status='awaiting_intro', Text="Your partner has also sent in their introduction!")
                 send_time = START_DATE + INTERVAL
                 for c in (chat, paired_chat):
                     c.status = 'intros_complete'
