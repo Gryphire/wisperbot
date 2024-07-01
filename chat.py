@@ -360,7 +360,7 @@ class ChatHandler:
     async def get_audio(self, status):
         chat = self
         files = []
-        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' AND event='recv_vn' AND status='{status}' AND datetime(timestamp) >= '{chat.sqlite_date}' ORDER BY timestamp DESC")
+        query = await chat.sqlquery(f"SELECT filename FROM logs WHERE chat_id='{chat.chat_id}' AND event='recv_vn' AND status='{status}' AND datetime(timestamp) >= '{chat.sqlite_date}' ORDER BY timestamp ASC")
         for row in query:
             file = row[0]
             chat.log(f'{status} audio file is {file}')
