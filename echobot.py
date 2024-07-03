@@ -178,13 +178,23 @@ async def get_tutorial_story(update, context):
         await chat.send_msg("""Please run /gettutorialstory""")
 
 async def handle_voice_or_text(update, context, chat, cur_state, done_message, next_state=None):
+    if not hasattr(chat, 'voice_count'):
+        chat.voice_count = 0
+
     if update.message.text and update.message.text != '/done':
         await chat.send_msg("Please send a voicenote response 😊")
     elif update.message.voice:
+        chat.voice_count += 1
         await get_voicenote(update, context)
-        await chat.send_msg(f"Thank you for recording your response, {chat.first_name}! You can send another or type /done when finished.")
+        if chat.voice_count < 2:
+            await chat.send_msg(f"Thank you for recording your response, {chat.first_name}! You can send **one** more if you need to, or type /done when finished.")
+        else:
+            await chat.send_msg(done_message)
+            chat.voice_count = 0
+            return next_state if next_state else cur_state
     elif update.message.text == '/done':
         await chat.send_msg(done_message)
+        chat.voice_count = 0
         return next_state if next_state else cur_state
     return cur_state
 
