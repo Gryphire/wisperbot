@@ -155,7 +155,7 @@ async def start_tutorial(update, context):
     '''When we receive /starttutorial, send the first instructions to the user (Tell them to run /gettutorial)'''
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/starttutorial':
-        await chat.send_msg("""Awesome, let's get started! ✨\n\nIn this tutorial, you will get the chance to two personal stories from other people.\n\nAfter each audio story, think about which values seem to be at play for that person at that time.\n\nAfter you've taken some time to think about the story, please take a minute or two to record a response to this person's story in an 'active listening' way.\n\nThis means that you try repeat back to the person what they said but in your own words, and that you ask clarifying questions that would help the person think about which values seemed to be at odds with one another in this situation. This way of listening ensures that the person you're responding to really feels heard.💜\n\nIn this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\n\nReady to listen to some stories? Please run /gettutorialstory to receive a practice story to start with.""")
+        await chat.send_msg("""Alright, next up you’ll have the opportunity to listen to two personal stories. When you’re done, think about what values are at play in their story. Take a minute or two to record a response to this person's story in an 'active listening' way.\n\nActive listening means reflecting back what the person is saying, and asking them clarifying questions. In this tutorial, your response will NOT be sent back to the story's author, so don't be afraid to practice! ^^\nYou’ll get your second and final tutorial story after you complete this one.\n\nReady to listen to some stories? Please run /gettutorialstory to receive a tutorial story to start with.""")
         chat.status = 'tut_started'
         chat.log_recv_text('Received /starttutorial')
         return TUTORIAL_STARTED
@@ -169,7 +169,7 @@ async def get_tutorial_story(update, context):
     if update.message.text == '/gettutorialstory':
         await chat.send_msg(f"Here's the first tutorial story for you to listen to:")
         await chat.send_vn(VN=f'tutorialstories/{tutorial_files[0]}')
-        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Echobot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!\n\nP.S. You will only be able to request another tutorial story when you have responded to this one first. (:""")
+        await chat.send_msg(f"""So, having listened to this person's story, what do you think is the rub? Which driving forces underlie the storyteller's experience?\n\nWhen you're ready to send in an audio response to this story, just record and send it to Echobot.\n\nRemember to reflect on the which values seems to drive the person in this story but do so through 'active listening': by paraphrasing and asking clarifying questions.\n\nRecord your response whenever you're ready!""")
         chat.status = f'tut_story{chat.week}received'
         chat.log_recv_text('Received /gettutorialstory')
         return TUT_STORY1
@@ -187,7 +187,7 @@ async def handle_voice_or_text(update, context, chat, cur_state, done_message, n
         chat.voice_count += 1
         await get_voicenote(update, context)
         if chat.voice_count < 2:
-            await chat.send_msg(f"Thank you for recording your response, {chat.first_name}! You can send **one** more if you need to, or type /done when finished.")
+            await chat.send_msg(f"Thank you for recording your response, {chat.first_name}! You can send **one** more (but only one) if you absolutely need to, for instance if you accidentally let go of the recording button too soon. If you're finished, simply hit /done.")
         else:
             await chat.send_msg(done_message)
             chat.voice_count = 0
@@ -212,11 +212,11 @@ async def tut_story1(update, context):
 
 async def tut_story2(update, context):
     chat = await initialize_chat_handler(update, context)
-    done_message = """Exciting! You've listened to all the tutorial stories I've got for you!
+    done_message = """Exciting! You've listened to all the tutorial stories we've got for you!
 
-Time to enter the main EchoBot experience, where you will also be able to listen to other people stories, and send them a one-time 'curious listening' response about the values they seem to balance.
+Time to enter the main EchoBot experience, where you will also be able to listen to another person's stories, and send them a 'curious listening' response about the values they seem to balance, just like you have done in the tutorial.
 
-Additionally, and importantly, you will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.
+Additionally, and importantly, your will also get to record your own stories, based on a prompt! Other people will then be able respond to your story, the same way you have responded to theirs.
 
 Use the /endtutorial command to enter the world of EchoBot!"""
     chat.status = f'tut_story2responded'
@@ -226,7 +226,7 @@ async def tut_completed(update, context):
     chat = await initialize_chat_handler(update, context)
     if update.message.text == '/endtutorial':
         chat.status = 'tut_completed'
-        await chat.send_msg(f"Now that the tutorial part of EchoBot has been completed, we think it's nice for both you and your partner to introduce yourselves shortly to one another.\n\nFeel free to include your first name if you want to, but you are not required to do so.\n\nPlease send a voicenote introducing yourself to your partner today. Once both you and your partner have done so, you will be able to continue on to the main EchoBot experience tomorrow.")
+        await chat.send_msg(f"Now that the tutorial part of EchoBot has been completed, you will be participating in Echo together with a randomly assigned peer! We think it's nice for both you and your partner to introduce yourselves shortly to one another.\n\nFeel free to include your first name if you want to, but you are not required to do so.\n\nPlease send a voicenote introducing yourself to your partner today. Once both you and your partner have done so, you will be able to continue on to the main Echo experience tomorrow.")
         chat.subdir = 'intros'
         chat.status = 'awaiting_intro'
         return AWAITING_INTRO
@@ -253,13 +253,13 @@ async def awaiting_intro(update, context):
                         "Welcome to the main Echo experience! You have successfully completed on-boarding, and have been already introduced to your Echo partner.",
                         "Over the course of this week, you will be exchanging audio messages and listening to one another. Today, we start with reflecting on your life and record an audio story for your partner. You will do so based on a prompt that you and your partner both will receive in a moment.",
                         "Your personal story prompt is 'What was an experience in your life where you had to handle a complex situation?'",
-                        "Take your time to think about this prompt, and submit your audio when you are ready. Don't worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
-                        "Make sure you send in your story today, your partner will be doing the same."
+                        "Take your time to think about this prompt, and submit your voice message (anywhere between 2 and 5 minutes is fine!) when you are ready. Don't worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
+                        "Make sure you send in your story today, your partner will be doing the same. (;"
                     ]
                     await c.send_msgs(messages, send_time)
                     c.status = f'awaiting_week{chat.week}_prompt'
             else:
-                await chat.send_msg("Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+                await chat.send_msg("Your partner has not yet sent their introduction. We'll keep you posted!")
         else:
             await chat.send_msg("Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
     return next_state
@@ -285,10 +285,10 @@ Stay tuned, you will continue the Echo journey tomorrow morning and receive furt
             for c in (chat, paired_chat):
                 c.status = f'week{chat.week}_day2_complete'
                 messages = [
-                    "Welcome back! Yesterday you recorded a personal story. Today, we would like you to listen to your own story, and think about whether and how you have had to balance between different values. This balancing is what we call 'value tensions'.",
+                    "Welcome back! Today, we would like you to listen to the story that you recorded yesterday, and think about how you have had to balance between different values in that situation. This is what we call 'value tensions'.",
                     "Here are some examples of value tensions.",
                     'img:vt.png',
-                    "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on **one or two** of the following value tensions, and send this to your Echo partner in an audio message. Note that you do not need to cover all of these tension; just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
+                    "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on one or two of these value tensions, and send this to your Echo partner in a voice message. You do not need to cover all of these tensions! Just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
                 ]
                 await c.send_msgs(messages, send_time)
                 c.status = f'awaiting_week{chat.week}_vt'
@@ -301,7 +301,7 @@ async def handle_vt(update, context):
     chat = await initialize_chat_handler(update, context)
     done_message = f"""Thank you for sending in your value tension reflection, {chat.first_name}!
 
-Now that you have reflected on your life and the value tensions therein, you and your Echo partner will both receive each other's stories tomorrow morning.
+Now that you have recorded a personal story ánd a value tension reflection on that story, you and your Echo partner will both receive each other's stories tomorrow morning.
 
 Stay tuned, you will continue the Echo journey in the coming days."""
     chat.status = f'received_week{chat.week}_vt'
@@ -332,8 +332,8 @@ Stay tuned, you will continue the Echo journey in the coming days."""
                     messages.append(f"audio:{audio}")
                 
                 messages.extend([
-                    "Now, it's important that you listen to these stories as you would to a good friend. Echo is all about 'curious listening', which means that we listen to understand. After having listened to your partner's story and value tension reflection, make sure you try to paraphrase your partner's story in your own words, and ask clarifying questions. That way, your partner will truly feel heard!",
-                    "Go ahead and record your 'curious listening' response to your partner's stories when you are ready. Make sure you do so before the end of tomorrow."
+                    "Now, it's important that you listen to these stories as you would to a good friend.  It’s important to be what we call a ‘curious listener’, a person who listens to understand rather than respond. Try to focus on understanding the other person, their perspective, and feelings. When you respond try to reflect their message back to them in your own words and ask a few clarifying or elaborating questions. This helps the other person to feel heard and understood.",
+                    "Go ahead and record your response whenever you’re ready, but make sure to do this by tomorrow night."
                 ])
                 
                 await c.send_msgs(messages, send_time)
@@ -361,7 +361,7 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
                 await c.send_msg(f"Hi! Just a heads up; your partner has also sent in their 'curious listening' response.")
                 #await c.send_msg(f"Day 4 complete!")
                 messages = [
-                    "Hi there! Yesterday you responded to your partner's stories and lent them your 'curious listening' ear! In the meantime, your partner has also listened to your audio messages. Time to take a listen!"
+                    "Hey! After sending your active listening response to your partner yesterday, today its time to hear your partners perspective. Take a listen!"
                 ]
                 
                 # Get and send personal story reflection audios
@@ -370,8 +370,8 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
                     messages.append(f"audio:{audio}")
                 
                 messages.extend([
-                    "When you have listened to their perspective, take a moment to think about your partner's audio message. Do you agree with them? Does their take on your voice messages change anything about how you view your own story?",
-                    "Take a moment to reflect on your partner's response and record a final response for them. You might thank them for listening to your stories, or for providing an interesting new perspective. Feel free to share your thoughts and exchange feelings. Your partner will be doing the same for you. Go ahead and record your final reaction when you are ready."
+                    "Take some time to reflect on their message. How has it shifted your perspective and thoughts? Did they think of a connection or idea you didn’t?",
+                    "Record a final message in response by midnight today. Feel free to thank them for their thoughts and what they have shared. Exchange your thoughts and feelings. Tomorrow you will get a chance to hear their final response to your insights as well."
                 ])
                 
                 await c.send_msgs(messages, send_time)
@@ -418,8 +418,8 @@ async def handle_feedback(update, context):
                 c.week = 2
                 messages = [
                     "Welcome to week two of the Echo experience!",
-                    "Your personal story prompt for this week is 'What was an experience in your life where you had to handle a complex situation?'",
-                    "Take your time to think about this prompt, and submit your audio when you are ready. Don't worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
+                    "Your personal story prompt for this week is 'What was a turning point in your life so far?'",
+                    "Take your time to think about this prompt, and submit your audio when you are ready. Again, don't worry too much about what your Echo partner might think—Echo is also about being compassionate, to yourself and others. Rest assured that you will be met with compassion.",
                     "Make sure you send in your story today, your partner will be doing the same."
                 ]
                 c.status = f'awaiting_week{chat.week}_prompt'
