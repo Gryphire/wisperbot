@@ -286,7 +286,6 @@ Stay tuned, you will continue the Echo journey tomorrow morning and receive furt
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_story':
             # Handle the case when both partners have submitted their stories
-            # This part remains largely unchanged
             send_time = START_DATE + (INTERVAL * 2)
             for c in (chat, paired_chat):
                 c.status = f'week{chat.week}_day2_complete'
@@ -294,12 +293,14 @@ Stay tuned, you will continue the Echo journey tomorrow morning and receive furt
                     "Welcome back! Today, we would like you to listen to the story that you recorded yesterday, and think about how you have had to balance between different values in that situation. This is what we call 'value tensions'.",
                     "Here are some examples of value tensions.",
                     'img:vt.png',
-                    "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on one or two of these value tensions, and send this to your Echo partner in a voice message. You do not need to cover all of these tensions! Just pick one or two that seem relevant to the story that you recorded earlier. When you are read to record, go ahead." 
+                    "In today's part of the Echo experience, we would like you to reflect on how you would place yourself on one or two of these value tensions, and send this to your Echo partner in a voice message. You do not need to cover all of these tensions! Just pick one or two that seem relevant to the story that you recorded earlier. When you are ready to record, go ahead." 
                 ]
                 await c.send_msgs(messages, send_time)
                 c.status = f'awaiting_week{chat.week}_vt'
+            return eval(f"WEEK{chat.week}_VT")  # Return the next state explicitly
         else:
             await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
+            return eval(f"WEEK{chat.week}_VT")
     
     return next_state
 
@@ -318,9 +319,8 @@ Stay tuned, you will continue the Echo journey in the coming days."""
         if paired_chat.status == f'received_week{chat.week}_vt':
             send_time = START_DATE + (INTERVAL * 3)
             for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
-                c.status = 'day3_complete'
+                c.status = f'week{chat.week}_day3_complete'
                 await c.send_msg(f"Hi there. Just a heads up that your partner has now also sent in their reflection. Stay tuned for the next steps tomorrow!")
-                #await c.send_msg(f"Day 3 complete!")
                 messages = [
                     "Hi there! Your partner and you both have recorded your story and value tension reflections. Time to listen to your partner's audio!",
                     "Here is your partner's initial personal story."
@@ -363,9 +363,8 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
         if paired_chat.status == f'received_week{chat.week}_ps':
             send_time = START_DATE + (INTERVAL * 5)
             for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
-                c.status = 'day4_complete'
+                c.status = f'week{chat.week}_day4_complete'
                 await c.send_msg(f"Hi! Just a heads up; your partner has also sent in their 'curious listening' response.")
-                #await c.send_msg(f"Day 4 complete!")
                 messages = [
                     "Hey! After sending your active listening response to your partner yesterday, today its time to hear your partners perspective. Take a listen!"
                 ]
@@ -381,7 +380,7 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
                 ])
                 
                 await c.send_msgs(messages, send_time)
-                c.status = 'awaiting_week1_feedback'
+                c.status = f'awaiting_week{chat.week}_feedback'
         else:
             await chat.send_msg(f"Your partner has not yet sent their 'curious listening' response. I'll let you know as soon as they do!")
     
@@ -394,17 +393,18 @@ async def handle_feedback(update, context):
 
     done_message = f"""Thanks for sharing that final reflection, {chat.first_name}! You will both receive your final reflections when you have both completed this step."""
     
-    next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_FEEDBACK"), done_message, eval(f"WEEK{chat.week + 1}_PROMPT"))
+    current_state = eval(f"WEEK{chat.week}_FEEDBACK")  # Correct current state
+    next_state = await handle_voice_or_text(update, context, chat, current_state, done_message, eval(f"WEEK2_PROMPT"))
     
-    if next_state == eval(f"WEEK{chat.week}_FEEDBACK"):
+    if next_state == current_state:
         return next_state  # User hasn't finished their submission yet
     
     # User has finished their submission
-    chat.status = f'received_week{chat.week}_feedback'
+    chat.status = f'received_week{chat.week}_feedback'  # Correct status
     
     # Check if both users have submitted their feedback
     if paired_chat.status == f'received_week{chat.week}_feedback':
-        # Both users have submitted feedback, proceed to next week
+        # Both users have submitted feedback, proceed to next week or end
         send_time = START_DATE + (INTERVAL * 6)
         
         for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
@@ -414,13 +414,14 @@ async def handle_feedback(update, context):
             ]
             
             # Get and send final feedback audios
-            feedback_audios = await oc.get_audio(f'awaiting_week{chat.week}_feedback')  # Changed from 'received_' to 'awaiting_'
+            feedback_audios = await oc.get_audio(f'awaiting_week{chat.week}_feedback')
             for audio in feedback_audios:
                 messages.append(f"audio:{audio}")
             
-            messages.extend([
-                f"This marks the end of Week {chat.week} of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps."
-            ])
+            if chat.week == 2:
+                messages.append("This marks the end of your Echo journey. We hope it has been valuable and reflective. Thank you for participating!")
+            else:
+                messages.append(f"This marks the end of Week {chat.week} of your Echo journey. We hope it has been valuable and reflective, so far. As you know, Echo consists of two weeks, which will start coming Monday. You will get the opportunity to share another story with your partner and try out some more curious listening. Enjoy the rest of your day, and keep an eye out for further steps.")
             
             await c.send_msgs(messages, send_time)
         
@@ -442,11 +443,11 @@ async def handle_feedback(update, context):
             c.status = f'awaiting_week{c.week}_prompt'
             await c.send_msgs(messages, send_time)
         
-        return eval(f"WEEK{chat.week}_PROMPT")
+        return next_state
     else:
         # Partner hasn't submitted feedback yet
-        await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive it as soon as they do!")
-        return eval(f"WEEK{chat.week}_FEEDBACK")
+        await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive further instructions as soon as they do!")
+        return next_state
 
 async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
