@@ -326,14 +326,14 @@ Stay tuned, you will continue the Echo journey in the coming days."""
                     "Here is your partner's initial personal story."
                 ]
                 # Get and send initial personal story audios
-                initial_story_audios = await oc.get_audio('received_week1_story')
+                initial_story_audios = await oc.get_audio(f'received_week{chat.week}_story')
                 for audio in initial_story_audios:
                     messages.append(f"audio:{audio}")
                 
                 messages.append("Here is your partner's value tension reflection on that story.")
                 
                 # Get and send value tension reflection audios
-                vt_reflection_audios = await oc.get_audio('received_week1_vt')
+                vt_reflection_audios = await oc.get_audio(f'received_week{chat.week}_vt')
                 for audio in vt_reflection_audios:
                     messages.append(f"audio:{audio}")
                 
@@ -370,7 +370,7 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
                 ]
                 
                 # Get and send personal story reflection audios
-                ps_reflection_audios = await oc.get_audio('received_week1_ps')
+                ps_reflection_audios = await oc.get_audio(f'received_week{chat.week}_ps')
                 for audio in ps_reflection_audios:
                     messages.append(f"audio:{audio}")
                 
