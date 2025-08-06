@@ -77,14 +77,61 @@ os.makedirs('sent', exist_ok=True)
 # Note that this variable resets everytime the bot restarts!!
 tutorial_files = [f for f in sorted(os.listdir('tutorialstories/')) if f.startswith('tutstory')]
 
-async def initialize_chat_handler(update,context=None):
+def get_expected_conversation_state(status, week=1):
+    """Map ChatHandler status to expected ConversationHandler state"""
+    # Base states that don't depend on week
+    status_to_state_map = {
+        'none': START_WELCOMED,
+        'start_welcomed': START_WELCOMED,
+        'tut_started': TUTORIAL_STARTED,
+        'tut_story1received': TUT_STORY1,
+        'tut_story1responded': TUT_STORY1,
+        'tut_story2received': TUT_STORY2,
+        'tut_story2responded': TUT_STORY2,
+        'tut_completed': TUT_COMPLETED,
+        'awaiting_intro': AWAITING_INTRO,
+        'received_intro': AWAITING_INTRO,
+        'intros_complete': AWAITING_INTRO,
+        'awaiting_listening_response': eval(f'WEEK{week}_PS'),
+    }
+    
+    # Week-dependent states
+    week_states = [
+        (f'awaiting_week{week}_prompt', eval(f'WEEK{week}_PROMPT')),
+        (f'received_week{week}_story', eval(f'WEEK{week}_PROMPT')),
+        (f'week{week}_day2_complete', eval(f'WEEK{week}_VT')),
+        (f'awaiting_week{week}_vt', eval(f'WEEK{week}_VT')),
+        (f'received_week{week}_vt', eval(f'WEEK{week}_VT')),
+        (f'week{week}_day3_complete', eval(f'WEEK{week}_PS')),
+        (f'received_week{week}_ps', eval(f'WEEK{week}_PS')),
+        (f'week{week}_day4_complete', eval(f'WEEK{week}_FEEDBACK')),
+        (f'awaiting_week{week}_feedback', eval(f'WEEK{week}_FEEDBACK')),
+        (f'received_week{week}_feedback', eval(f'WEEK{week}_FEEDBACK')),
+        (f'week{week}_complete', eval(f'WEEK{week}_FEEDBACK')),
+    ]
+    
+    for week_status, state in week_states:
+        status_to_state_map[week_status] = state
+    
+    return status_to_state_map.get(status, START_WELCOMED)
+
+async def initialize_chat_handler(update, context=None):
     chat_id = update.effective_chat.id
     if chat_id not in chat_handlers:
         chat_handlers[chat_id] = ChatHandler(chat_id, update, context, START_DATE)
         chat = chat_handlers[chat_id]
     chat = chat_handlers[chat_id]
     chat.update = update
+    chat.context = context
     return chat
+
+def validate_conversation_state(chat, expected_state, current_state):
+    """Validate that conversation state matches expected state based on chat status"""
+    if current_state != expected_state:
+        chat.log(f"STATE MISMATCH: Expected {expected_state} ({states[expected_state]}) but got {current_state} ({states[current_state] if current_state < len(states) else 'UNKNOWN'})")
+        chat.log(f"Chat status: {chat.status}, Week: {getattr(chat, 'week', 1)}")
+        return False
+    return True
 
 async def get_voicenote(update: Update, context: CallbackContext) -> None:
     chat = await initialize_chat_handler(update,context)
@@ -350,13 +397,31 @@ Stay tuned, you will continue the Echo journey in the coming days."""
     return next_state
 
 async def handle_ps(update, context):
-    '''Handle the response for week 1 personal story reflection'''
+    '''Handle the response for week 1/2 personal story reflection'''
     chat = await initialize_chat_handler(update, context)
+    
+    # Validate we're in the correct state for PS handling
+    current_state = eval(f"WEEK{chat.week}_PS")
+    expected_state = get_expected_conversation_state(chat.status, chat.week)
+    
+    # If user is already in feedback state, they shouldn't be here
+    if chat.status == f'awaiting_week{chat.week}_feedback':
+        chat.log(f"ERROR: User in feedback state but handle_ps called. Redirecting to handle_feedback.")
+        return await handle_feedback(update, context)
+    
+    if not validate_conversation_state(chat, current_state, current_state):
+        # Log the mismatch but continue - we'll let the state correction happen naturally
+        pass
+    
     done_message = f"""Thank you for recording your response! I'm sure that your partner {chat_handlers[chat.paired_chat_id].first_name if chat_handlers[chat.paired_chat_id].first_name else ''} will be grateful to hear your attentive perspective!
 
 Stay tuned and keep an eye out for next steps from me in the coming days!"""
-    chat.status = f'received_week{chat.week}_ps'
-    next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_PS"), done_message, eval(f"WEEK{chat.week}_FEEDBACK"))
+    
+    # Only update status if we're not already at received_ps
+    if chat.status != f'received_week{chat.week}_ps':
+        chat.status = f'received_week{chat.week}_ps'
+    
+    next_state = await handle_voice_or_text(update, context, chat, current_state, done_message, eval(f"WEEK{chat.week}_FEEDBACK"))
     
     if next_state == eval(f"WEEK{chat.week}_FEEDBACK"):
         paired_chat = chat_handlers[chat.paired_chat_id]
@@ -391,9 +456,21 @@ async def handle_feedback(update, context):
     chat = await initialize_chat_handler(update, context)
     paired_chat = chat_handlers[chat.paired_chat_id]
 
+    # Validate we're in the correct state for feedback handling
+    current_state = eval(f"WEEK{chat.week}_FEEDBACK")
+    expected_state = get_expected_conversation_state(chat.status, chat.week)
+    
+    # If user is still in PS state but should be in feedback, they might have been misrouted
+    if chat.status == f'received_week{chat.week}_ps':
+        chat.log(f"WARNING: User in PS state but handle_feedback called. This might be a state mismatch.")
+        # Don't redirect here - let them proceed with feedback as intended
+    
+    if not validate_conversation_state(chat, current_state, current_state):
+        # Log the mismatch but continue
+        pass
+
     done_message = f"""Thanks for sharing that final reflection, {chat.first_name}! You will both receive your final reflections when you have both completed this step."""
     
-    current_state = eval(f"WEEK{chat.week}_FEEDBACK")  # Correct current state
     next_state = await handle_voice_or_text(update, context, chat, current_state, done_message, eval(f"WEEK2_PROMPT"))
     
     if next_state == current_state:
@@ -461,6 +538,71 @@ if __name__ == '__main__':
     # User runs /starttutorial and receives tutorial instructions
     # From status "start_welcomed" to "tut_started"
     #voice_handler = MessageHandler(filters.VOICE, get_voicenote)
+    # Create smart handlers that route based on chat status
+    async def smart_week1_handler(update, context):
+        chat = await initialize_chat_handler(update, context)
+        # Ensure week is set
+        if not hasattr(chat, 'week'):
+            chat.week = 1
+            
+        if chat.status == f'awaiting_week1_feedback':
+            chat.log(f"Routing to feedback handler based on status: {chat.status}")
+            return await handle_feedback(update, context)
+        elif chat.status in [f'received_week1_ps', 'awaiting_listening_response', 'week1_day3_complete']:
+            chat.log(f"Routing to PS handler based on status: {chat.status}")
+            return await handle_ps(update, context)
+        else:
+            chat.log(f"WARNING: Unexpected status {chat.status} in week1 handler, defaulting to PS")
+            return await handle_ps(update, context)
+    
+    async def smart_week1_feedback_handler(update, context):
+        chat = await initialize_chat_handler(update, context)
+        # Ensure week is set
+        if not hasattr(chat, 'week'):
+            chat.week = 1
+            
+        if chat.status == f'received_week1_ps':
+            chat.log(f"WARNING: User in PS status but routed to feedback handler - redirecting to PS")
+            return await handle_ps(update, context)
+        elif chat.status in ['week1_day4_complete', f'awaiting_week1_feedback']:
+            chat.log(f"Routing to feedback handler based on status: {chat.status}")
+            return await handle_feedback(update, context)
+        else:
+            chat.log(f"Routing to feedback handler for status: {chat.status}")
+            return await handle_feedback(update, context)
+    
+    async def smart_week2_handler(update, context):
+        chat = await initialize_chat_handler(update, context)
+        # Ensure week is set
+        if not hasattr(chat, 'week'):
+            chat.week = 2
+            
+        if chat.status == f'awaiting_week2_feedback':
+            chat.log(f"Routing to feedback handler based on status: {chat.status}")
+            return await handle_feedback(update, context)
+        elif chat.status in [f'received_week2_ps', 'awaiting_listening_response', 'week2_day3_complete']:
+            chat.log(f"Routing to PS handler based on status: {chat.status}")
+            return await handle_ps(update, context)
+        else:
+            chat.log(f"WARNING: Unexpected status {chat.status} in week2 handler, defaulting to PS")
+            return await handle_ps(update, context)
+    
+    async def smart_week2_feedback_handler(update, context):
+        chat = await initialize_chat_handler(update, context)
+        # Ensure week is set
+        if not hasattr(chat, 'week'):
+            chat.week = 2
+            
+        if chat.status == f'received_week2_ps':
+            chat.log(f"WARNING: User in PS status but routed to feedback handler - redirecting to PS")
+            return await handle_ps(update, context)
+        elif chat.status in ['week2_day4_complete', f'awaiting_week2_feedback']:
+            chat.log(f"Routing to feedback handler based on status: {chat.status}")
+            return await handle_feedback(update, context)
+        else:
+            chat.log(f"Routing to feedback handler for status: {chat.status}")
+            return await handle_feedback(update, context)
+
     tutorial_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -472,12 +614,12 @@ if __name__ == '__main__':
             AWAITING_INTRO: [MessageHandler(filters.TEXT | filters.VOICE, awaiting_intro)],
             WEEK1_PROMPT: [MessageHandler(filters.TEXT | filters.VOICE, handle_prompt)],
             WEEK1_VT: [MessageHandler(filters.TEXT | filters.VOICE, handle_vt)],
-            WEEK1_PS: [MessageHandler(filters.TEXT | filters.VOICE, handle_ps)],
-            WEEK1_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, handle_feedback)],
+            WEEK1_PS: [MessageHandler(filters.TEXT | filters.VOICE, smart_week1_handler)],
+            WEEK1_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, smart_week1_feedback_handler)],
             WEEK2_PROMPT: [MessageHandler(filters.TEXT | filters.VOICE, handle_prompt)],
             WEEK2_VT: [MessageHandler(filters.TEXT | filters.VOICE, handle_vt)],
-            WEEK2_PS: [MessageHandler(filters.TEXT | filters.VOICE, handle_ps)],
-            WEEK2_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, handle_feedback)]
+            WEEK2_PS: [MessageHandler(filters.TEXT | filters.VOICE, smart_week2_handler)],
+            WEEK2_FEEDBACK: [MessageHandler(filters.TEXT | filters.VOICE, smart_week2_feedback_handler)]
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
