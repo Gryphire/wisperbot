@@ -115,6 +115,52 @@ def get_expected_conversation_state(status, week=1):
     
     return status_to_state_map.get(status, START_WELCOMED)
 
+def get_starting_chat_status(starting_state_name, week=1):
+    """Map ConversationHandler state name to appropriate ChatHandler status"""
+    # Just reuse the existing function and invert its result
+    target_state = state_mapping[starting_state_name]
+    
+    # Build the same mapping as get_expected_conversation_state
+    status_to_state_map = {
+        'none': START_WELCOMED,
+        'start_welcomed': START_WELCOMED,
+        'tut_started': TUTORIAL_STARTED,
+        'tut_story1received': TUT_STORY1,
+        'tut_story1responded': TUT_STORY1,
+        'tut_story2received': TUT_STORY2,
+        'tut_story2responded': TUT_STORY2,
+        'tut_completed': TUT_COMPLETED,
+        'awaiting_intro': AWAITING_INTRO,
+        'received_intro': AWAITING_INTRO,
+        'intros_complete': AWAITING_INTRO,
+        'awaiting_listening_response': eval(f'WEEK{week}_PS'),
+    }
+    
+    # Add week-dependent states
+    for w in [1, 2]:  # Handle both weeks
+        week_states = [
+            (f'awaiting_week{w}_prompt', eval(f'WEEK{w}_PROMPT')),
+            (f'received_week{w}_story', eval(f'WEEK{w}_PROMPT')),
+            (f'week{w}_day2_complete', eval(f'WEEK{w}_VT')),
+            (f'awaiting_week{w}_vt', eval(f'WEEK{w}_VT')),
+            (f'received_week{w}_vt', eval(f'WEEK{w}_VT')),
+            (f'week{w}_day3_complete', eval(f'WEEK{w}_PS')),
+            (f'received_week{w}_ps', eval(f'WEEK{w}_PS')),
+            (f'week{w}_day4_complete', eval(f'WEEK{w}_FEEDBACK')),
+            (f'awaiting_week{w}_feedback', eval(f'WEEK{w}_FEEDBACK')),
+            (f'received_week{w}_feedback', eval(f'WEEK{w}_FEEDBACK')),
+            (f'week{w}_complete', eval(f'WEEK{w}_FEEDBACK')),
+        ]
+        for week_status, state in week_states:
+            status_to_state_map[week_status] = state
+    
+    # Find the first status that maps to our target state
+    for status, state in status_to_state_map.items():
+        if state == target_state:
+            return status
+    
+    return 'none'
+
 def get_pair_start_date(chat, paired_chat):
     """Get the appropriate start date for a user pair (later of the two start dates)"""
     return max(chat.start_date, paired_chat.start_date)
@@ -188,6 +234,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if STARTING_STATUS:
         chat.log(f'Skipping to {STARTING_STATUS}')
         await chat.send_msg(f'Based on bot\'s .env file, skipping to {STARTING_STATUS}', parse_mode=ParseMode.HTML)
+        
+        # Set the appropriate week for week-specific states
+        if 'WEEK2' in STARTING_STATUS:
+            chat.week = 2
+            
+        # GENERALIZED FIX: Set chat.status to match the STARTING_STATUS
+        chat.status = get_starting_chat_status(STARTING_STATUS, chat.week)
+        chat.log(f'Chat status set to: {chat.status} for state {STARTING_STATUS}')
+        
         return state_mapping[STARTING_STATUS]
     if 'group' in chat.chat_type: # To inlude both group and supergroup
         await bot.leave_chat(chat_id=chat.chat_id)
