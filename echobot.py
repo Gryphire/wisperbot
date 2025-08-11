@@ -115,6 +115,10 @@ def get_expected_conversation_state(status, week=1):
     
     return status_to_state_map.get(status, START_WELCOMED)
 
+def get_pair_start_date(chat, paired_chat):
+    """Get the appropriate start date for a user pair (later of the two start dates)"""
+    return max(chat.start_date, paired_chat.start_date)
+
 async def initialize_chat_handler(update, context=None):
     chat_id = update.effective_chat.id
     if chat_id not in chat_handlers:
@@ -298,7 +302,9 @@ async def awaiting_intro(update, context):
             paired_chat = chat_handlers[chat.paired_chat_id]
             if paired_chat.status == 'received_intro':
                 await chat.exchange_vns(paired_chat, status='awaiting_intro', Text="Your partner has also sent in their introduction!")
-                send_time = START_DATE + INTERVAL
+                # Use the later start date to ensure both users are ready
+                pair_start_date = get_pair_start_date(chat, paired_chat)
+                send_time = pair_start_date + INTERVAL
                 for c in (chat, paired_chat):
                     c.status = 'intros_complete'
                     await c.send_msg("Day 1 complete!")
@@ -333,7 +339,8 @@ Stay tuned, you will continue the Echo journey tomorrow morning and receive furt
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_story':
             # Handle the case when both partners have submitted their stories
-            send_time = START_DATE + (INTERVAL * 2)
+            pair_start_date = get_pair_start_date(chat, paired_chat)
+            send_time = pair_start_date + (INTERVAL * 2)
             for c in (chat, paired_chat):
                 c.status = f'week{chat.week}_day2_complete'
                 messages = [
@@ -364,7 +371,8 @@ Stay tuned, you will continue the Echo journey in the coming days."""
     if next_state == eval(f"WEEK{chat.week}_PS"):
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_vt':
-            send_time = START_DATE + (INTERVAL * 3)
+            pair_start_date = get_pair_start_date(chat, paired_chat)
+            send_time = pair_start_date + (INTERVAL * 3)
             for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
                 c.status = f'week{chat.week}_day3_complete'
                 await c.send_msg(f"Hi there. Just a heads up that your partner has now also sent in their reflection. Stay tuned for the next steps tomorrow!")
@@ -426,7 +434,8 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
     if next_state == eval(f"WEEK{chat.week}_FEEDBACK"):
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_ps':
-            send_time = START_DATE + (INTERVAL * 5)
+            pair_start_date = get_pair_start_date(chat, paired_chat)
+            send_time = pair_start_date + (INTERVAL * 5)
             for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
                 c.status = f'week{chat.week}_day4_complete'
                 await c.send_msg(f"Hi! Just a heads up; your partner has also sent in their 'curious listening' response.")
@@ -452,7 +461,6 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
     return next_state
 
 async def handle_feedback(update, context):
-    global START_DATE
     chat = await initialize_chat_handler(update, context)
     paired_chat = chat_handlers[chat.paired_chat_id]
 
@@ -482,7 +490,11 @@ async def handle_feedback(update, context):
     # Check if both users have submitted their feedback
     if paired_chat.status == f'received_week{chat.week}_feedback':
         # Both users have submitted feedback, proceed to next week or end
-        send_time = START_DATE + (INTERVAL * 6)
+        
+        # Calculate timing based on each user pair's individual start date
+        # Use the later of the two users' start dates to ensure both are ready
+        pair_start_date = get_pair_start_date(chat, paired_chat)
+        send_time = pair_start_date + (INTERVAL * 6)
         
         for c, oc in [(chat, paired_chat), (paired_chat, chat)]:
             c.status = f'week{chat.week}_complete'
@@ -505,12 +517,15 @@ async def handle_feedback(update, context):
         if chat.week == 2:
             return END
         
-        if START_DATE == ORIGINAL_START_DATE:  # Bit hacky
-            START_DATE = START_DATE + INTERVAL * 7
-        send_time = START_DATE
+        # Calculate week 2 start time based on each pair's timeline (no global modification)
+        week2_start_time = pair_start_date + (INTERVAL * 7)
         
         for c in [chat, paired_chat]:
             c.week += 1
+            # Store week 2 start time for this specific user pair
+            if not hasattr(c, 'week2_start_date'):
+                c.week2_start_date = week2_start_time
+                
             messages = [
                 f"Welcome to week {c.week} of the Echo experience!",
                 "Your personal story prompt for this week is 'What was a turning point in your life so far?'",
@@ -518,7 +533,7 @@ async def handle_feedback(update, context):
                 "Make sure you send in your story today, your partner will be doing the same."
             ]
             c.status = f'awaiting_week{c.week}_prompt'
-            await c.send_msgs(messages, send_time)
+            await c.send_msgs(messages, week2_start_time)
         
         return next_state
     else:
