@@ -46,13 +46,73 @@ def load_user_pairs(filename):
         with open(filename, newline='') as csvfile:
             reader = csv.reader(csvfile)
             for row in reader:
-                user1, user2 = row
-                user_pairs[user1] = user2
-                user_pairs[user2] = user1  # Assuming a two-way relationship for simplicity
+                if len(row) < 2:
+                    continue  # Skip invalid rows
+                user1, user2 = row[0].strip(), row[1].strip()
+                if user1 and user2:  # Only add if both usernames are non-empty
+                    user_pairs[user1] = user2
+                    user_pairs[user2] = user1  # Assuming a two-way relationship for simplicity
         return user_pairs
     except Exception as e:
         print(f"Failed to load user pairs from {filename}: {e}")
         sys.exit(1)
+
+def reload_user_pairs(filename='user_pairs.csv'):
+    """Reload user pairs from file and update the global variable"""
+    global user_pairs
+    try:
+        new_pairs = load_user_pairs(filename)
+        user_pairs = new_pairs
+        logging.info(f"User pairs reloaded successfully. {len(new_pairs)//2} pairs loaded.")
+        return True, f"Successfully reloaded {len(new_pairs)//2} user pairs."
+    except Exception as e:
+        error_msg = f"Failed to reload user pairs: {e}"
+        logging.error(error_msg)
+        return False, error_msg
+
+def validate_csv_content(csv_content):
+    """Validate CSV content and return parsed pairs"""
+    try:
+        import io
+        reader = csv.reader(io.StringIO(csv_content))
+        pairs = {}
+        for row in reader:
+            if len(row) < 2:
+                continue
+            user1, user2 = row[0].strip(), row[1].strip()
+            if not user1 or not user2:
+                continue
+            if user1 in pairs or user2 in pairs:
+                return False, f"Duplicate user found: {user1} or {user2}"
+            pairs[user1] = user2
+            pairs[user2] = user1
+        return True, pairs
+    except Exception as e:
+        return False, f"CSV validation error: {e}"
+
+def save_user_pairs_from_dict(pairs_dict, filename='user_pairs.csv'):
+    """Save user pairs dictionary to CSV file"""
+    try:
+        # Extract unique pairs (avoid duplicates)
+        seen = set()
+        pairs_list = []
+        for user1, user2 in pairs_dict.items():
+            if user1 < user2:  # Normalize order
+                pair = (user1, user2)
+            else:
+                pair = (user2, user1)
+            if pair not in seen:
+                seen.add(pair)
+                pairs_list.append(pair)
+        
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            for user1, user2 in pairs_list:
+                writer.writerow([user1, user2])
+        
+        return True, f"Successfully saved {len(pairs_list)} pairs to {filename}"
+    except Exception as e:
+        return False, f"Failed to save user pairs: {e}"
 
 user_pairs = load_user_pairs('user_pairs.csv')
 name_to_chat_id = {}

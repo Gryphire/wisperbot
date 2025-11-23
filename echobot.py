@@ -13,10 +13,12 @@ from telegram.ext import (ApplicationBuilder,
     ConversationHandler,
     ApplicationBuilder,
     JobQueue)
-from chat import ChatHandler
+from chat import ChatHandler, user_pairs, reload_user_pairs, validate_csv_content, save_user_pairs_from_dict
 from telegram.constants import ParseMode
 import asyncio
 from telegram.error import TimedOut
+import io
+import tempfile
 
 ###---------INITIALISING VARIABLES---------###
 dotenv.load_dotenv()
@@ -34,6 +36,13 @@ except TypeError:
 
 ORIGINAL_START_DATE = START_DATE
 print(f'START_DATE is {START_DATE} and one "day" is {INTERVAL}')
+
+###---------ADMIN CONFIGURATION---------###
+# Admin usernames (without @ symbol)
+ADMIN_USERNAMES = ['NastasiaGriffioen', 'bryan_kam']
+# Can be configured via environment variable: ADMIN_USERNAMES=user1,user2,user3
+if os.environ.get("ADMIN_USERNAMES"):
+    ADMIN_USERNAMES = [u.strip() for u in os.environ.get("ADMIN_USERNAMES").split(',')]
 
 ###---------CONVERSATION HANDLER SETUP---------###
 states = ['START_WELCOMED',
@@ -600,6 +609,174 @@ async def cancel(update, context):
     chat = await initialize_chat_handler(update, context)
     chat.status = 'cancel'
 
+###---------ADMIN FUNCTIONS---------###
+def is_admin(update: Update) -> bool:
+    """Check if the user is an admin"""
+    if not update.effective_user or not update.effective_user.username:
+        return False
+    return update.effective_user.username in ADMIN_USERNAMES
+
+async def admin_show_pairs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current user pairs configuration"""
+    if not is_admin(update):
+        await update.message.reply_text("❌ Access denied. Admin only.")
+        return
+    
+    from chat import user_pairs
+    
+    # Format pairs for display
+    seen = set()
+    pairs_list = []
+    for user1, user2 in user_pairs.items():
+        if user1 < user2:  # Normalize to avoid duplicates
+            pair = (user1, user2)
+        else:
+            pair = (user2, user1)
+        if pair not in seen:
+            seen.add(pair)
+            pairs_list.append(pair)
+    
+    pairs_list.sort()  # Sort for readability
+    
+    if not pairs_list:
+        await update.message.reply_text("📋 **Current User Pairs:**\n\nNo pairs configured.")
+        return
+    
+    message = "📋 **Current User Pairs:**\n\n"
+    for i, (user1, user2) in enumerate(pairs_list, 1):
+        message += f"{i}. `{user1}` ↔ `{user2}`\n"
+    
+    message += f"\n_Total: {len(pairs_list)} pairs_"
+    
+    await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+
+async def admin_update_pairs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Update user pairs from CSV text or file attachment"""
+    if not is_admin(update):
+        await update.message.reply_text("❌ Access denied. Admin only.")
+        return
+    
+    # Check if there's a document attachment
+    if update.message.document:
+        # Download and process file
+        try:
+            file = await context.bot.get_file(update.message.document.file_id)
+            
+            # Check file extension
+            file_name = update.message.document.file_name or ""
+            if not file_name.lower().endswith('.csv'):
+                await update.message.reply_text("❌ Please send a CSV file.")
+                return
+            
+            # Download to temporary file
+            with tempfile.NamedTemporaryFile(mode='w+', suffix='.csv', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+            
+            await file.download_to_drive(tmp_path)
+            
+            # Read and validate
+            with open(tmp_path, 'r', encoding='utf-8') as f:
+                csv_content = f.read()
+            
+            # Validate CSV
+            is_valid, result = validate_csv_content(csv_content)
+            if not is_valid:
+                os.unlink(tmp_path)
+                await update.message.reply_text(f"❌ Validation failed: {result}")
+                return
+            
+            # Save to user_pairs.csv
+            success, msg = save_user_pairs_from_dict(result)
+            if not success:
+                os.unlink(tmp_path)
+                await update.message.reply_text(f"❌ {msg}")
+                return
+            
+            # Reload user pairs
+            reload_success, reload_msg = reload_user_pairs()
+            if not reload_success:
+                await update.message.reply_text(f"⚠️ Saved but reload failed: {reload_msg}")
+                return
+            
+            # Update existing chat handlers' paired_user
+            for chat_id, chat in chat_handlers.items():
+                if hasattr(chat, 'name') and chat.name:
+                    chat.set_paired_user(chat_handlers)
+            
+            os.unlink(tmp_path)
+            await update.message.reply_text(f"✅ {msg}\n🔄 {reload_msg}\n\nUser pairs updated successfully!")
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error processing file: {str(e)}")
+            if 'tmp_path' in locals():
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+        return
+    
+    # Check if there's text (CSV content)
+    if update.message.text:
+        text = update.message.text.strip()
+        # Remove command if present
+        if text.startswith('/admin_update_pairs'):
+            text = text.replace('/admin_update_pairs', '').strip()
+        
+        if not text:
+            await update.message.reply_text(
+                "📝 **Update User Pairs**\n\n"
+                "Send CSV content in one of these formats:\n\n"
+                "1. **Paste CSV text:**\n"
+                "   `/admin_update_pairs`\n"
+                "   `username1,username2`\n"
+                "   `username3,username4`\n\n"
+                "2. **Send CSV file:**\n"
+                "   Send a `.csv` file as attachment\n\n"
+                "The CSV should have two columns: username1,username2",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+        
+        # Validate CSV
+        is_valid, result = validate_csv_content(text)
+        if not is_valid:
+            await update.message.reply_text(f"❌ Validation failed: {result}")
+            return
+        
+        # Save to user_pairs.csv
+        success, msg = save_user_pairs_from_dict(result)
+        if not success:
+            await update.message.reply_text(f"❌ {msg}")
+            return
+        
+        # Reload user pairs
+        reload_success, reload_msg = reload_user_pairs()
+        if not reload_success:
+            await update.message.reply_text(f"⚠️ Saved but reload failed: {reload_msg}")
+            return
+        
+        # Update existing chat handlers' paired_user
+        for chat_id, chat in chat_handlers.items():
+            if hasattr(chat, 'name') and chat.name:
+                chat.set_paired_user(chat_handlers)
+        
+        await update.message.reply_text(f"✅ {msg}\n🔄 {reload_msg}\n\nUser pairs updated successfully!")
+        return
+    
+    # No file or text provided
+    await update.message.reply_text(
+        "📝 **Update User Pairs**\n\n"
+        "Send CSV content in one of these formats:\n\n"
+        "1. **Paste CSV text:**\n"
+        "   `/admin_update_pairs`\n"
+        "   `username1,username2`\n"
+        "   `username3,username4`\n\n"
+        "2. **Send CSV file:**\n"
+        "   Send a `.csv` file as attachment\n\n"
+        "The CSV should have two columns: username1,username2",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
 if __name__ == '__main__':
     # Define the conversation handler with states and corresponding functions
     # User runs /start and receives start message
@@ -695,6 +872,15 @@ if __name__ == '__main__':
     )
 
     application = ApplicationBuilder().token(TOKEN).build()
+
+    # Register admin command handlers (before conversation handler to avoid conflicts)
+    application.add_handler(CommandHandler('admin_show_pairs', admin_show_pairs))
+    application.add_handler(CommandHandler('admin_update_pairs', admin_update_pairs))
+    # Also handle document messages for admin_update_pairs (check admin status inside handler)
+    async def admin_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.message and update.message.document and is_admin(update):
+            await admin_update_pairs(update, context)
+    application.add_handler(MessageHandler(filters.Document.ALL, admin_document_handler))
 
     application.add_handler(tutorial_handler)
     #application.add_handler(week2_handler)
