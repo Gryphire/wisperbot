@@ -1,6 +1,7 @@
 ###---------LIBRARY IMPORTS---------###
 from datetime import datetime, timedelta
 import dotenv
+import logging
 import os
 import re
 from telegram import Update
@@ -177,11 +178,40 @@ def get_pair_start_date(chat, paired_chat):
 async def initialize_chat_handler(update, context=None):
     chat_id = update.effective_chat.id
     if chat_id not in chat_handlers:
-        chat_handlers[chat_id] = ChatHandler(chat_id, update, context, START_DATE)
+        # Check if state exists in database first
+        from chat import c, conn
+        import sqlite3
+        try:
+            c.execute("SELECT chat_id FROM chat_state WHERE chat_id = ?", (chat_id,))
+            exists = c.fetchone()
+            if exists:
+                # Restore from database
+                chat_handlers[chat_id] = ChatHandler(chat_id, update, context, START_DATE, restore_from_db=True)
+                chat = chat_handlers[chat_id]
+                # Update context and update
+                chat.update = update
+                chat.context = context
+                # Reschedule any pending jobs now that we have context
+                from chat import reschedule_pending_jobs_for_chat
+                await reschedule_pending_jobs_for_chat(chat)
+            else:
+                # Create new handler
+                chat_handlers[chat_id] = ChatHandler(chat_id, update, context, START_DATE)
+                chat = chat_handlers[chat_id]
+        except Exception as e:
+            logging.error(f"Error checking database for chat_id {chat_id}: {e}")
+            # Fall back to creating new handler
+            chat_handlers[chat_id] = ChatHandler(chat_id, update, context, START_DATE)
+            chat = chat_handlers[chat_id]
+    else:
         chat = chat_handlers[chat_id]
-    chat = chat_handlers[chat_id]
-    chat.update = update
-    chat.context = context
+        # Update context and update in case they changed
+        chat.update = update
+        chat.context = context
+        # Reschedule any pending jobs if we didn't before
+        if hasattr(chat, 'pending_jobs') and chat.pending_jobs:
+            from chat import reschedule_pending_jobs_for_chat
+            await reschedule_pending_jobs_for_chat(chat)
     return chat
 
 def validate_conversation_state(chat, expected_state, current_state):
@@ -239,15 +269,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return END
     bot = chat.context.bot
     chat.log_recv_text('/start command')
+    
+    # If user has persisted state (not 'none'), respect it and return appropriate conversation state
+    if chat.status != 'none':
+        chat.log(f'User has persisted state ({chat.status}), resuming from saved state')
+        # Return the conversation state that matches the persisted status
+        expected_state = get_expected_conversation_state(chat.status, getattr(chat, 'week', 1))
+        return expected_state
+    
+    # New user - initialize week and apply STARTING_STATUS if set
     chat.week = 1
+    chat.save_state()
+    
+    # Only apply STARTING_STATUS for new users (status is 'none')
     if STARTING_STATUS:
-        chat.log(f'Skipping to {STARTING_STATUS}')
+        chat.log(f'Skipping to {STARTING_STATUS} (new user, applying STARTING_STATUS)')
         await chat.send_msg(f'Based on bot\'s .env file, skipping to {STARTING_STATUS}', parse_mode=ParseMode.HTML)
         
         # Set the appropriate week for week-specific states
         if 'WEEK2' in STARTING_STATUS:
             chat.week = 2
-            
+        else:
+            chat.week = 1
+        chat.save_state()
+        
         # GENERALIZED FIX: Set chat.status to match the STARTING_STATUS
         chat.status = get_starting_chat_status(STARTING_STATUS, chat.week)
         chat.log(f'Chat status set to: {chat.status} for state {STARTING_STATUS}')
@@ -357,12 +402,33 @@ async def tut_completed(update, context):
 async def awaiting_intro(update, context):
     '''Await introductions. Once both are received, exchange them between users, then schedule the first prompt.'''
     chat = await initialize_chat_handler(update, context)
+    
+    # If user has already submitted their intro, they should wait for partner
+    if chat.status == 'received_intro':
+        # Reset voice_count to prevent progression
+        chat.voice_count = 0
+        # Check if partner has also completed
+        if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+            paired_chat = chat_handlers[chat.paired_chat_id]
+            if paired_chat.status == 'received_intro':
+                # Both have completed, should proceed to PROMPT
+                chat.log(f"Both users have completed intro, proceeding to PROMPT")
+                # This will be handled by the transition logic below
+            else:
+                # Partner hasn't completed yet, tell user to wait
+                await chat.send_msg(f"Thank you for your introduction! Your partner has not yet sent their introduction. We'll keep you posted!")
+                return AWAITING_INTRO
+        else:
+            # Partner not found, tell user to wait
+            await chat.send_msg(f"Thank you for your introduction! Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+            return AWAITING_INTRO
+    
     done_message = "Thank you for recording your introduction!"
     next_state = await handle_voice_or_text(update, context, chat, AWAITING_INTRO, done_message, WEEK1_PROMPT)
 
     if next_state == WEEK1_PROMPT:
         chat.status = 'received_intro'
-        if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id in chat_handlers:
+        if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
             paired_chat = chat_handlers[chat.paired_chat_id]
             if paired_chat.status == 'received_intro':
                 await chat.exchange_vns(paired_chat, status='awaiting_intro', Text="Your partner has also sent in their introduction!")
@@ -393,13 +459,61 @@ async def handle_prompt(update, context):
     if context.job_queue.jobs():
         await chat.send_msg("Please wait until we send you the next prompt :)")
         return eval(f"WEEK{chat.week}_PROMPT")
+    
+    # If user is still in intro phase, they shouldn't be here yet
+    if chat.status in ['received_intro', 'awaiting_intro']:
+        # Reset voice_count to prevent progression
+        chat.voice_count = 0
+        await chat.send_msg(f"Thank you for your introduction! Your partner has not yet sent their introduction. You'll receive it as soon as they send it in!")
+        # Return current state to prevent progression
+        return eval(f"WEEK{chat.week}_PROMPT")
+    
+    # If user has already submitted their story, they should wait for partner
+    if chat.status == f'received_week{chat.week}_story':
+        # Check if partner has also completed
+        if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+            paired_chat = chat_handlers[chat.paired_chat_id]
+            if paired_chat.status == f'received_week{chat.week}_story':
+                # Both have completed, should proceed to VT
+                chat.log(f"Both users have completed story, proceeding to VT")
+                # This will be handled by the transition logic below
+            else:
+                # Partner hasn't completed yet, tell user to wait
+                await chat.send_msg(f"Thank you for your story! Your partner has not yet sent their story. I'll let you know as soon as they do!")
+                return eval(f"WEEK{chat.week}_PROMPT")
+        else:
+            # Partner not found, tell user to wait
+            await chat.send_msg(f"Thank you for your story! Your partner has not yet sent their story. I'll let you know as soon as they do!")
+            return eval(f"WEEK{chat.week}_PROMPT")
+    
+    # Check if partner has completed their story before allowing progression
+    partner_ready = False
+    if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+        paired_chat = chat_handlers[chat.paired_chat_id]
+        if paired_chat.status == f'received_week{chat.week}_story':
+            partner_ready = True
+    
     done_message = f"""Thank you for submitting your audio story, {chat.first_name}! Your story has been saved, but will not yet be sent to your partner. Before that happens, you will be asked to complete one more part tomorrow.
 
 Stay tuned, you will continue the Echo journey tomorrow morning and receive further instructions then!"""
-    chat.status = f'received_week{chat.week}_story'
-    next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_PROMPT"), done_message, eval(f"WEEK{chat.week}_VT"))
+    
+    # Only allow progression to next state if partner has also completed
+    if partner_ready:
+        # Partner has completed, allow progression and update status
+        chat.status = f'received_week{chat.week}_story'
+        next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_PROMPT"), done_message, eval(f"WEEK{chat.week}_VT"))
+    else:
+        # Partner hasn't completed, stay in current state
+        # Don't update status yet - only update when partner also completes
+        next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_PROMPT"), done_message, None)
+        if next_state != eval(f"WEEK{chat.week}_PROMPT"):
+            # User finished their submission, but partner hasn't - keep them in PROMPT state
+            # Status will be updated when partner completes
+            await chat.send_msg(f"Your partner has not yet sent their story. I'll let you know as soon as they do!")
+            return eval(f"WEEK{chat.week}_PROMPT")
     
     if next_state == eval(f"WEEK{chat.week}_VT"):
+        # Both partners have submitted - proceed with scheduling next step
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_story':
             # Handle the case when both partners have submitted their stories
@@ -424,15 +538,57 @@ Stay tuned, you will continue the Echo journey tomorrow morning and receive furt
 
 async def handle_vt(update, context):
     chat = await initialize_chat_handler(update, context)
+    
+    # If user has already submitted their VT reflection, they should wait for partner
+    if chat.status == f'received_week{chat.week}_vt':
+        # Reset voice_count to prevent progression
+        chat.voice_count = 0
+        # Check if partner has also completed
+        if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+            paired_chat = chat_handlers[chat.paired_chat_id]
+            if paired_chat.status == f'received_week{chat.week}_vt':
+                # Both have completed, should proceed to PS
+                chat.log(f"Both users have completed VT, proceeding to PS")
+                # This will be handled by the transition logic below
+            else:
+                # Partner hasn't completed yet, tell user to wait
+                await chat.send_msg(f"Thank you for your reflection! Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
+                return eval(f"WEEK{chat.week}_VT")
+        else:
+            # Partner not found, tell user to wait
+            await chat.send_msg(f"Thank you for your reflection! Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
+            return eval(f"WEEK{chat.week}_VT")
+    
+    # Check if partner has completed their VT reflection before allowing progression
+    partner_ready = False
+    if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+        paired_chat = chat_handlers[chat.paired_chat_id]
+        if paired_chat.status == f'received_week{chat.week}_vt':
+            partner_ready = True
+    
     done_message = f"""Thank you for sending in your value tension reflection, {chat.first_name}!
 
 Now that you have recorded a personal story ánd a value tension reflection on that story, you and your Echo partner will both receive each other's stories tomorrow morning.
 
 Stay tuned, you will continue the Echo journey in the coming days."""
-    chat.status = f'received_week{chat.week}_vt'
-    next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_VT"), done_message, eval(f"WEEK{chat.week}_PS"))
+    
+    # Only allow progression to next state if partner has also completed
+    if partner_ready:
+        # Partner has completed, allow progression and update status
+        chat.status = f'received_week{chat.week}_vt'
+        next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_VT"), done_message, eval(f"WEEK{chat.week}_PS"))
+    else:
+        # Partner hasn't completed, stay in current state
+        # Don't update status yet - only update when partner also completes
+        next_state = await handle_voice_or_text(update, context, chat, eval(f"WEEK{chat.week}_VT"), done_message, None)
+        if next_state != eval(f"WEEK{chat.week}_VT"):
+            # User finished their submission, but partner hasn't - keep them in VT state
+            # Status will be updated when partner completes
+            await chat.send_msg(f"Your partner has not yet completed their reflection. I'll let you know as soon as they do!")
+            return eval(f"WEEK{chat.week}_VT")
     
     if next_state == eval(f"WEEK{chat.week}_PS"):
+        # Both partners have submitted - proceed with scheduling next step
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_vt':
             pair_start_date = get_pair_start_date(chat, paired_chat)
@@ -481,21 +637,58 @@ async def handle_ps(update, context):
         chat.log(f"ERROR: User in feedback state but handle_ps called. Redirecting to handle_feedback.")
         return await handle_feedback(update, context)
     
+    # If user has already submitted their PS response, they should wait for partner
+    if chat.status == f'received_week{chat.week}_ps':
+        # Reset voice_count to prevent progression
+        chat.voice_count = 0
+        # Check if partner has also completed
+        if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+            paired_chat = chat_handlers[chat.paired_chat_id]
+            if paired_chat.status == f'received_week{chat.week}_ps':
+                # Both have completed, should be in feedback state
+                chat.log(f"Both users have completed PS, redirecting to feedback handler")
+                return await handle_feedback(update, context)
+        # Partner hasn't completed yet, tell user to wait
+        await chat.send_msg(f"Thank you for your response! Your partner has not yet sent their 'curious listening' response. I'll let you know as soon as they do!")
+        return current_state
+    
     if not validate_conversation_state(chat, current_state, current_state):
         # Log the mismatch but continue - we'll let the state correction happen naturally
         pass
     
-    done_message = f"""Thank you for recording your response! I'm sure that your partner {chat_handlers[chat.paired_chat_id].first_name if chat_handlers[chat.paired_chat_id].first_name else ''} will be grateful to hear your attentive perspective!
+    # Check if partner has completed their PS response before allowing progression
+    partner_ready = False
+    partner_name = ''
+    if hasattr(chat, 'paired_chat_id') and chat.paired_chat_id and chat.paired_chat_id in chat_handlers:
+        paired_chat = chat_handlers[chat.paired_chat_id]
+        partner_name = paired_chat.first_name if paired_chat.first_name else ''
+        if paired_chat.status == f'received_week{chat.week}_ps':
+            partner_ready = True
+    
+    done_message = f"""Thank you for recording your response! I'm sure that your partner {partner_name} will be grateful to hear your attentive perspective!
 
 Stay tuned and keep an eye out for next steps from me in the coming days!"""
     
-    # Only update status if we're not already at received_ps
-    if chat.status != f'received_week{chat.week}_ps':
-        chat.status = f'received_week{chat.week}_ps'
-    
-    next_state = await handle_voice_or_text(update, context, chat, current_state, done_message, eval(f"WEEK{chat.week}_FEEDBACK"))
+    # Only allow progression to next state if partner has also completed
+    if partner_ready:
+        # Partner has completed, allow progression
+        if chat.status != f'received_week{chat.week}_ps':
+            chat.status = f'received_week{chat.week}_ps'
+        next_state = await handle_voice_or_text(update, context, chat, current_state, done_message, eval(f"WEEK{chat.week}_FEEDBACK"))
+    else:
+        # Partner hasn't completed - don't update status or allow progression
+        # User can still submit their response, but won't progress until partner does
+        next_state = await handle_voice_or_text(update, context, chat, current_state, done_message, None)
+        if next_state != current_state:
+            # User finished their submission, but partner hasn't - keep them in PS state
+            # Don't update status to received_ps yet
+            await chat.send_msg(f"Your partner has not yet sent their 'curious listening' response. I'll let you know as soon as they do!")
+            return current_state
+        # If user hasn't finished yet, just return current state
+        return current_state
     
     if next_state == eval(f"WEEK{chat.week}_FEEDBACK"):
+        # Both partners have submitted - proceed with scheduling next step
         paired_chat = chat_handlers[chat.paired_chat_id]
         if paired_chat.status == f'received_week{chat.week}_ps':
             pair_start_date = get_pair_start_date(chat, paired_chat)
@@ -526,11 +719,27 @@ Stay tuned and keep an eye out for next steps from me in the coming days!"""
 
 async def handle_feedback(update, context):
     chat = await initialize_chat_handler(update, context)
+    if not hasattr(chat, 'paired_chat_id') or not chat.paired_chat_id or chat.paired_chat_id not in chat_handlers:
+        await chat.send_msg(f"Your partner has not yet sent their feedback. You'll receive further instructions as soon as they do!")
+        return eval(f"WEEK{chat.week}_FEEDBACK")
     paired_chat = chat_handlers[chat.paired_chat_id]
 
     # Validate we're in the correct state for feedback handling
     current_state = eval(f"WEEK{chat.week}_FEEDBACK")
     expected_state = get_expected_conversation_state(chat.status, chat.week)
+    
+    # If user has already submitted their feedback, they should wait for partner
+    if chat.status == f'received_week{chat.week}_feedback':
+        # Reset voice_count to prevent progression
+        chat.voice_count = 0
+        # Check if partner has also completed
+        if paired_chat.status == f'received_week{chat.week}_feedback':
+            # Both have completed - this should trigger the completion logic below
+            chat.log(f"Both users have completed feedback")
+        else:
+            # Partner hasn't completed yet, tell user to wait
+            await chat.send_msg(f"Thank you for your feedback! Your partner has not yet sent their feedback. You'll receive further instructions as soon as they do!")
+            return current_state
     
     # If user is still in PS state but should be in feedback, they might have been misrouted
     if chat.status == f'received_week{chat.week}_ps':
@@ -589,6 +798,7 @@ async def handle_feedback(update, context):
             # Store week 2 start time for this specific user pair
             if not hasattr(c, 'week2_start_date'):
                 c.week2_start_date = week2_start_time
+            c.save_state()
                 
             messages = [
                 f"Welcome to week {c.week} of the Echo experience!",
@@ -872,6 +1082,15 @@ if __name__ == '__main__':
     )
 
     application = ApplicationBuilder().token(TOKEN).build()
+
+    # Restore all chat states from database on startup
+    from chat import restore_all_chat_states
+    logging.info("Restoring chat states from database...")
+    restore_all_chat_states(chat_handlers)
+    
+    # Note: Jobs will be rescheduled when users send messages (in initialize_chat_handler)
+    # This ensures context.job_queue is available. We could also try to reschedule immediately
+    # but some jobs might need context that's only available after a message is received.
 
     # Register admin command handlers (before conversation handler to avoid conflicts)
     application.add_handler(CommandHandler('admin_show_pairs', admin_show_pairs))

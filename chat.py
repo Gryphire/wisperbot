@@ -2,6 +2,7 @@
 import csv
 from datetime import datetime, timedelta
 import dotenv
+import json
 import logging
 import os
 import sqlite3
@@ -34,6 +35,39 @@ c.execute("""CREATE TABLE IF NOT EXISTS logs ( timestamp INTEGER,
     filename TEXT,
     status TEXT
 )""")
+
+# Create chat_state table for persisting conversation state
+c.execute("""CREATE TABLE IF NOT EXISTS chat_state (
+    chat_id INTEGER PRIMARY KEY,
+    status TEXT NOT NULL,
+    week INTEGER DEFAULT 1,
+    start_date TEXT,
+    sqlite_date TEXT,
+    subdir TEXT,
+    sent TEXT,
+    paired_user TEXT,
+    paired_chat_id INTEGER,
+    name TEXT,
+    first_name TEXT,
+    voice_count INTEGER DEFAULT 0,
+    week2_start_date TEXT,
+    last_updated TEXT
+)""")
+
+# Create scheduled_jobs table for persisting scheduled messages
+c.execute("""CREATE TABLE IF NOT EXISTS scheduled_jobs (
+    job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    scheduled_time TEXT NOT NULL,
+    message_type TEXT NOT NULL,
+    content TEXT,
+    status TEXT,
+    created_at TEXT NOT NULL,
+    completed INTEGER DEFAULT 0,
+    FOREIGN KEY (chat_id) REFERENCES chat_state(chat_id)
+)""")
+
+conn.commit()
 
 ###---------USER PAIRS FILE SETUP---------###
 # Load user pairs from CSV file
@@ -143,35 +177,148 @@ logging.info(f"OpenAI transcription is {'on' if TRANSCRIBE else 'off'}, video is
 
 ###---------SETTING UP CHATHANDLER CLASS---------###
 class ChatHandler:
-    def __init__(self, chat_id, update=None, context=None, start_date=None):
-        if not update.message or not context:
-            missing = "update.message" if not update.message else "context"
-            logging.error(f'Received an update without {missing} defined: {update}')
-            return
+    def __init__(self, chat_id, update=None, context=None, start_date=None, restore_from_db=False):
         self.chat_id = chat_id
-        self.chat_type = update.message.chat.type
         self.context = context
-        self.start_date = datetime.fromisoformat(start_date) if isinstance(start_date, str) else start_date
-        self.sqlite_date = self.start_date.strftime("%Y-%m-%d %H:%M:%S")
-        self.sent = []
-        # When chat first starts, the user will be in tutorial mode
-        self._status = 'none'
-        # Initial voicenotes will be saved under "tutorialresponses"
-        self.subdir = 'tutorialresponses'
-        self.paired_user = None  # Initialize paired_user attribute
-        if self.chat_type == 'private':
-            self.name = update.message.from_user.username # This will probably break if username not defined
-            self.first_name = update.message.from_user.first_name
-            self.first_name = update.message.from_user.full_name
-        elif 'group' in self.chat_type:  # To include both group and supergroup
-            self.name = update.message.chat.title if update else None
-        name_to_chat_id[self.name] = self.chat_id
-        try:
-            with open(f'chat_sessions/chat-{self.chat_id}', 'r', encoding='utf-8') as f:
-                self.number = int(f.read())
-        except FileNotFoundError:
-            self.number = None
+        self.update = update if update else None
+        
+        if restore_from_db:
+            # Restore from database
+            self._restore_from_db()
+            # Update context and update if provided
+            if context:
+                self.context = context
+            if update:
+                self.update = update
+                # Update chat_type and name mapping if we have update info
+                if update.message:
+                    self.chat_type = update.message.chat.type
+                    if self.chat_type == 'private' and update.message.from_user:
+                        username = update.message.from_user.username
+                        if username:
+                            name_to_chat_id[username] = self.chat_id
+                            # Update name if it was restored from DB but we have fresh info
+                            if not self.name or self.name != username:
+                                self.name = username
+                            if update.message.from_user.first_name:
+                                self.first_name = update.message.from_user.first_name
+                    elif 'group' in self.chat_type:
+                        self.name = update.message.chat.title if update.message.chat.title else self.name
+        else:
+            # Normal initialization from update
+            if not update or not update.message or not context:
+                missing = "update.message" if not update or not update.message else "context"
+                logging.error(f'Received an update without {missing} defined: {update}')
+                return
+            self.chat_type = update.message.chat.type
+            self.start_date = datetime.fromisoformat(start_date) if isinstance(start_date, str) else start_date
+            if self.start_date is None:
+                self.start_date = datetime.now()
+            self.sqlite_date = self.start_date.strftime("%Y-%m-%d %H:%M:%S")
+            self.sent = []
+            # When chat first starts, the user will be in tutorial mode
+            self._status = 'none'
+            # Initial voicenotes will be saved under "tutorialresponses"
+            self.subdir = 'tutorialresponses'
+            self.paired_user = None  # Initialize paired_user attribute
+            self.voice_count = 0
+            self.week = 1
+            self.week2_start_date = None
+            if self.chat_type == 'private':
+                self.name = update.message.from_user.username # This will probably break if username not defined
+                self.first_name = update.message.from_user.first_name
+                self.first_name = update.message.from_user.full_name
+            elif 'group' in self.chat_type:  # To include both group and supergroup
+                self.name = update.message.chat.title if update else None
+            name_to_chat_id[self.name] = self.chat_id
+            try:
+                with open(f'chat_sessions/chat-{self.chat_id}', 'r', encoding='utf-8') as f:
+                    self.number = int(f.read())
+            except FileNotFoundError:
+                self.number = None
+            # Save initial state
+            self.save_state()
+        
         self.logger = self.get_logger()# Set the paired user during initialization
+    
+    def _restore_from_db(self):
+        '''Restore chat handler state from database'''
+        try:
+            c.execute("SELECT * FROM chat_state WHERE chat_id = ?", (self.chat_id,))
+            row = c.fetchone()
+            if row:
+                # Restore from database
+                self._status = row[1]  # status
+                self.week = row[2] if row[2] else 1  # week
+                self.start_date = datetime.fromisoformat(row[3]) if row[3] else datetime.now()  # start_date
+                self.sqlite_date = row[4] if row[4] else self.start_date.strftime("%Y-%m-%d %H:%M:%S")  # sqlite_date
+                self.subdir = row[5] if row[5] else 'tutorialresponses'  # subdir
+                self.sent = json.loads(row[6]) if row[6] else []  # sent (JSON array)
+                self.paired_user = row[7]  # paired_user
+                self.paired_chat_id = row[8]  # paired_chat_id
+                self.name = row[9]  # name
+                self.first_name = row[10] if row[10] else ''  # first_name
+                self.voice_count = row[11] if row[11] else 0  # voice_count
+                self.week2_start_date = datetime.fromisoformat(row[12]) if row[12] else None  # week2_start_date
+                
+                # Restore chat_type from name (we'll need to update this when we get an update)
+                # For now, assume private if name exists
+                self.chat_type = 'private' if self.name else 'group'
+                
+                logging.info(f"Restored chat state for chat_id {self.chat_id}: status={self._status}, week={self.week}")
+            else:
+                # No state found, use defaults
+                logging.warning(f"No persisted state found for chat_id {self.chat_id}, using defaults")
+                self._status = 'none'
+                self.week = 1
+                self.start_date = datetime.now()
+                self.sqlite_date = self.start_date.strftime("%Y-%m-%d %H:%M:%S")
+                self.subdir = 'tutorialresponses'
+                self.sent = []
+                self.paired_user = None
+                self.paired_chat_id = None
+                self.name = None
+                self.first_name = ''
+                self.voice_count = 0
+                self.week2_start_date = None
+                self.chat_type = 'private'
+        except Exception as e:
+            logging.error(f"Error restoring state for chat_id {self.chat_id}: {e}")
+            # Fall back to defaults
+            self._status = 'none'
+            self.week = 1
+            self.start_date = datetime.now()
+            self.sqlite_date = self.start_date.strftime("%Y-%m-%d %H:%M:%S")
+            self.subdir = 'tutorialresponses'
+            self.sent = []
+            self.paired_user = None
+            self.paired_chat_id = None
+            self.name = None
+            self.first_name = ''
+            self.voice_count = 0
+            self.week2_start_date = None
+            self.chat_type = 'private'
+    
+    def save_state(self):
+        '''Save current chat handler state to database'''
+        try:
+            sent_json = json.dumps(self.sent) if self.sent else '[]'
+            start_date_str = self.start_date.isoformat() if self.start_date else None
+            sqlite_date_str = self.sqlite_date if hasattr(self, 'sqlite_date') and self.sqlite_date else None
+            week2_start_str = self.week2_start_date.isoformat() if hasattr(self, 'week2_start_date') and self.week2_start_date else None
+            paired_chat_id = getattr(self, 'paired_chat_id', None)
+            
+            c.execute("""INSERT OR REPLACE INTO chat_state 
+                (chat_id, status, week, start_date, sqlite_date, subdir, sent, paired_user, 
+                 paired_chat_id, name, first_name, voice_count, week2_start_date, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (self.chat_id, self._status, getattr(self, 'week', 1), start_date_str, sqlite_date_str,
+                 self.subdir, sent_json, getattr(self, 'paired_user', None), paired_chat_id, getattr(self, 'name', None),
+                 getattr(self, 'first_name', ''), getattr(self, 'voice_count', 0), week2_start_str,
+                 datetime.now().isoformat()))
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Error saving state for chat_id {self.chat_id}: {e}")
 
     def set_paired_user(self, chat_handlers):
         '''Set the paired user based on the chat's username'''
@@ -185,9 +332,13 @@ class ChatHandler:
             chat.log(f'Paired user set to {self.name}')
             chat.paired_chat_id = self.chat_id
             chat.log(f'Paired user id is {self.chat_id}')
+            # Save both chat handlers after pairing
+            chat.save_state()
         except KeyError:
             self.log(f'Paired chat id not yet found: {self.paired_user}')
             pass
+        # Save state after setting paired user
+        self.save_state()
 
     @property
     def status(self):
@@ -198,6 +349,8 @@ class ChatHandler:
         if self.status != value:
             self.log(f'Status changing from "{self.status}" to "{value}"')
             self._status = value
+            # Auto-save state when status changes
+            self.save_state()
 
     @property
     def directory(self):
@@ -236,6 +389,7 @@ class ChatHandler:
             random_file = random.choice(ogg_files)
             self.sent.append(random_file)
             self.log(f'Selected random voicenote: {random_file}')
+            self.save_state()  # Save state after updating sent list
             return random_file
         except IndexError:
             await self.send_msg("""Exciting! You've listened to all the reflections I've got for you so far. Please run /??? to enter the main experience!""")
@@ -351,6 +505,7 @@ class ChatHandler:
     # this will call either send_msg or send_vn
     async def send_now(self, context=None, VN=None, Text=None, img=None, status=None):
         '''Send a voicenote file or message, either scheduled or now'''
+        job_id = None
         try:
             update = context.job.data['update']
             VN = context.job.data['VN']
@@ -358,6 +513,7 @@ class ChatHandler:
             img = context.job.data['img']
             status = context.job.data['status']
             scheduled_time = context.job.data['scheduled_time']
+            job_id = context.job.data.get('job_id')
             # Check if the current time is significantly past the scheduled time
             now = datetime.now()
             if scheduled_time and (now - scheduled_time).total_seconds() > 5:
@@ -373,17 +529,58 @@ class ChatHandler:
             await self.send_vn(VN)
         if img:
             await self.send_img(img)
+        
+        # Mark job as completed in database
+        if job_id:
+            try:
+                c.execute("UPDATE scheduled_jobs SET completed = 1 WHERE job_id = ?", (job_id,))
+                conn.commit()
+                self.log(f"Marked scheduled job {job_id} as completed")
+            except Exception as e:
+                logging.error(f"Error marking job {job_id} as completed: {e}")
     
     async def schedule(self, send_time, VN, Text, img, status, misfire_grace_time=None):
         self.log(f"Scheduled sending of {VN} and message '{Text}' at {send_time}")
         now = datetime.now()
         delay = (send_time - now).total_seconds()
-        self.context.job_queue.run_once(
-            self.send_now,
-            delay,
-            data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status, 'scheduled_time': send_time},
-            job_kwargs={'misfire_grace_time': misfire_grace_time}
-        )
+        
+        # Persist job to database
+        try:
+            # Determine message type and content
+            if VN:
+                msg_type = 'VN'
+                content = VN
+            elif Text:
+                msg_type = 'Text'
+                content = Text
+            elif img:
+                msg_type = 'img'
+                content = img
+            else:
+                msg_type = 'unknown'
+                content = ''
+            
+            c.execute("""INSERT INTO scheduled_jobs 
+                (chat_id, scheduled_time, message_type, content, status, created_at, completed)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (self.chat_id, send_time.isoformat(), msg_type, content, status, 
+                 datetime.now().isoformat(), 0))
+            conn.commit()
+            job_id = c.lastrowid
+            self.log(f"Persisted scheduled job {job_id} to database")
+        except Exception as e:
+            logging.error(f"Error persisting scheduled job for chat_id {self.chat_id}: {e}")
+            job_id = None
+        
+        # Schedule the job in memory
+        if self.context and self.context.job_queue:
+            self.context.job_queue.run_once(
+                self.send_now,
+                delay,
+                data={'update': self.update, 'VN': VN, 'Text': Text, 'img': img, 'status': status, 
+                      'scheduled_time': send_time, 'job_id': job_id},
+                job_kwargs={'misfire_grace_time': misfire_grace_time}
+            )
     
     async def send(self, send_time=None, VN=None, Text=None, img=None, status=None):
         now = datetime.now()
@@ -471,3 +668,148 @@ def dump_logs_to_csv():
 
 # Register the function to be called when the program is exiting
 atexit.register(dump_logs_to_csv)
+
+###---------STATE PERSISTENCE FUNCTIONS---------###
+def restore_all_chat_states(chat_handlers_dict):
+    '''Restore all chat states from database into chat_handlers dictionary'''
+    try:
+        c.execute("SELECT chat_id FROM chat_state")
+        rows = c.fetchall()
+        restored_count = 0
+        for row in rows:
+            chat_id = row[0]
+            if chat_id not in chat_handlers_dict:
+                # Create ChatHandler with restore_from_db=True
+                chat_handlers_dict[chat_id] = ChatHandler(chat_id, restore_from_db=True)
+                restored_count += 1
+                logging.info(f"Restored chat handler for chat_id {chat_id}")
+        logging.info(f"Restored {restored_count} chat handlers from database")
+        return restored_count
+    except Exception as e:
+        logging.error(f"Error restoring chat states: {e}")
+        return 0
+
+async def reschedule_pending_jobs(application, chat_handlers_dict):
+    '''Reschedule all pending jobs from database'''
+    try:
+        now = datetime.now()
+        c.execute("""SELECT job_id, chat_id, scheduled_time, message_type, content, status 
+                     FROM scheduled_jobs 
+                     WHERE completed = 0 AND scheduled_time > ?""", (now.isoformat(),))
+        rows = c.fetchall()
+        rescheduled_count = 0
+        
+        for row in rows:
+            job_id, chat_id, scheduled_time_str, msg_type, content, status = row
+            scheduled_time = datetime.fromisoformat(scheduled_time_str)
+            
+            # Check if chat handler exists
+            if chat_id not in chat_handlers_dict:
+                logging.warning(f"Chat handler {chat_id} not found for job {job_id}, skipping")
+                continue
+            
+            chat = chat_handlers_dict[chat_id]
+            
+            # Need context to schedule jobs - will be set when user sends next message
+            # For now, we'll store the job info and reschedule when context is available
+            if not hasattr(chat, 'context') or not chat.context:
+                logging.warning(f"Chat handler {chat_id} has no context yet, job will be rescheduled on next message")
+                # Store job info in chat handler for later rescheduling
+                if not hasattr(chat, 'pending_jobs'):
+                    chat.pending_jobs = []
+                chat.pending_jobs.append({
+                    'job_id': job_id,
+                    'scheduled_time': scheduled_time,
+                    'message_type': msg_type,
+                    'content': content,
+                    'status': status
+                })
+                continue
+            
+            # Reschedule the job
+            delay = (scheduled_time - now).total_seconds()
+            if delay > 0:
+                # Prepare data based on message type
+                job_data = {
+                    'update': chat.update,
+                    'status': status,
+                    'scheduled_time': scheduled_time,
+                    'job_id': job_id
+                }
+                if msg_type == 'VN':
+                    job_data['VN'] = content
+                elif msg_type == 'Text':
+                    job_data['Text'] = content
+                elif msg_type == 'img':
+                    job_data['img'] = content
+                
+                chat.context.job_queue.run_once(
+                    chat.send_now,
+                    delay,
+                    data=job_data
+                )
+                rescheduled_count += 1
+                logging.info(f"Rescheduled job {job_id} for chat_id {chat_id} at {scheduled_time}")
+            else:
+                # Job is in the past, mark as completed
+                c.execute("UPDATE scheduled_jobs SET completed = 1 WHERE job_id = ?", (job_id,))
+                conn.commit()
+                logging.warning(f"Job {job_id} was scheduled in the past, marked as completed")
+        
+        conn.commit()
+        logging.info(f"Rescheduled {rescheduled_count} pending jobs")
+        return rescheduled_count
+    except Exception as e:
+        logging.error(f"Error rescheduling pending jobs: {e}")
+        return 0
+
+async def reschedule_pending_jobs_for_chat(chat):
+    '''Reschedule pending jobs for a specific chat handler when context becomes available'''
+    if not hasattr(chat, 'pending_jobs') or not chat.pending_jobs:
+        return
+    
+    if not chat.context or not chat.context.job_queue:
+        return
+    
+    now = datetime.now()
+    rescheduled = []
+    
+    for job_info in chat.pending_jobs[:]:  # Copy list to iterate safely
+        scheduled_time = job_info['scheduled_time']
+        delay = (scheduled_time - now).total_seconds()
+        
+        if delay > 0:
+            # Prepare job data
+            job_data = {
+                'update': chat.update,
+                'status': job_info['status'],
+                'scheduled_time': scheduled_time,
+                'job_id': job_info['job_id']
+            }
+            if job_info['message_type'] == 'VN':
+                job_data['VN'] = job_info['content']
+            elif job_info['message_type'] == 'Text':
+                job_data['Text'] = job_info['content']
+            elif job_info['message_type'] == 'img':
+                job_data['img'] = job_info['content']
+            
+            chat.context.job_queue.run_once(
+                chat.send_now,
+                delay,
+                data=job_data
+            )
+            rescheduled.append(job_info)
+            chat.log(f"Rescheduled pending job {job_info['job_id']}")
+        else:
+            # Job is in the past, mark as completed
+            try:
+                c.execute("UPDATE scheduled_jobs SET completed = 1 WHERE job_id = ?", (job_info['job_id'],))
+                conn.commit()
+            except Exception as e:
+                logging.error(f"Error marking job {job_info['job_id']} as completed: {e}")
+        
+        # Remove from pending list
+        chat.pending_jobs.remove(job_info)
+    
+    if rescheduled:
+        logging.info(f"Rescheduled {len(rescheduled)} pending jobs for chat_id {chat.chat_id}")
